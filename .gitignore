@@ -26,6 +26,11 @@ logs/
 *.log
 *.pid
 
+# Local project notes
+MoodFM_PRD_v2.0.md
+TEST_FLOW.md
+Front-end styles/
+
 # IDE and local tooling
 .idea/
 .vscode/
