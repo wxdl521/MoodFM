@@ -1,0 +1,82 @@
+﻿spring:
+  application:
+    name: moodfm-backend
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+  # Virtual Threads (Java 21)
+  threads:
+    virtual:
+      enabled: true
+
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:moodfm}?useUnicode=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 20
+          max-idle: 10
+          min-idle: 2
+
+  cache:
+    type: caffeine
+    caffeine:
+      spec: maximumSize=50000,expireAfterWrite=3600s
+
+  ai:
+    openai:
+      base-url: ${LLM_BASE_URL:https://api.deepseek.com}
+      api-key: ${LLM_API_KEY:}
+      chat:
+        options:
+          model: ${LLM_MODEL:deepseek-chat}
+          temperature: 0.3
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    db-config:
+      logic-delete-field: status
+      logic-delete-value: 0
+      logic-not-delete-value: 1
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /docs
+    operations-sorter: alpha
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+app:
+  music-adapter:
+    url: ${MUSIC_ADAPTER_URL:http://localhost:3000}
+  jwt:
+    secret: ${JWT_SECRET:}
+    access-token-expire-ms: 1800000    # 30 分钟
+    refresh-token-expire-ms: 604800000 # 7 天
+    remember-me-expire-ms: 2592000000  # 30 天
+  cookie-encryption:
+    key: ${COOKIE_ENCRYPTION_KEY:}
+
+server:
+  port: 8081

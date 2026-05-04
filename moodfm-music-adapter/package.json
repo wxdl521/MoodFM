@@ -1,0 +1,22 @@
+{
+  "name": "moodfm-music-adapter",
+  "version": "1.0.0",
+  "description": "Node.js music platform API adapter for MoodFM",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "NeteaseCloudMusicApi": "^4.31.0",
+    "express": "^4.19.2",
+    "axios": "^1.7.0",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

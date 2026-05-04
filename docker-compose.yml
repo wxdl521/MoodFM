@@ -1,0 +1,98 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: moodfm-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: moodfm
+      MYSQL_USER: ${MYSQL_USER:-moodfm}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-moodfm_dev_password}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --ngram_token_size=2
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: moodfm-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --protected-mode no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  music-adapter:
+    build: ./moodfm-music-adapter
+    container_name: moodfm-music-adapter
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./moodfm-backend
+    container_name: moodfm-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      music-adapter:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: moodfm
+      MYSQL_USER: ${MYSQL_USER:-moodfm}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-moodfm_dev_password}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MUSIC_ADAPTER_URL: http://music-adapter:3000
+      JWT_SECRET: ${JWT_SECRET}
+      COOKIE_ENCRYPTION_KEY: ${COOKIE_ENCRYPTION_KEY}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/api/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+
+  frontend:
+    build: ./moodfm-frontend
+    container_name: moodfm-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "5173:80"
+
+volumes:
+  mysql_data:
+  redis_data:

@@ -1,0 +1,19 @@
+package com.moodfm.domain.vo;
+
+import lombok.Builder;
+import lombok.Data;
+
+@Data
+@Builder
+public class SongVO {
+    private Long id;
+    private String title;
+    private String artist;
+    private String album;
+    private Integer durationSeconds;
+    private String coverUrl;
+    private String platform;
+    private String platformSongId;
+    private String playUrl;
+    private String recommendReason; // AI 推荐解释
+}

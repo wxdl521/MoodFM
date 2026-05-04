@@ -1,0 +1,13 @@
+logging:
+  level:
+    root: WARN
+    com.moodfm: INFO
+  file:
+    name: /app/logs/moodfm.log
+    max-size: 100MB
+    max-history: 30
+
+management:
+  endpoint:
+    health:
+      show-details: never
