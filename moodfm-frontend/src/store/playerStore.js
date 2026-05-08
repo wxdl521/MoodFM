@@ -26,4 +26,8 @@ export const usePlayerStore = create((set, get) => ({
     const { currentIndex } = get();
     if (currentIndex > 0) set({ currentIndex: currentIndex - 1, progress: 0 });
   },
+
+  appendQueue: (songs) => set(s => ({ queue: [...s.queue, ...songs] })),
+
+  setCurrentIndex: (index) => set({ currentIndex: index, progress: 0 }),
 }));
