@@ -5,6 +5,10 @@ import { usePlayerStore } from '../store/playerStore';
 import { useRadioStore } from '../store/radioStore';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { QueueDrawer } from '../components/player/QueueDrawer';
+import { RecommendCard } from '../components/player/RecommendCard';
+import { FeedbackBanner } from '../components/player/FeedbackBanner';
+import { blacklistApi } from '../api/blacklist';
 
 function ChipDark({ children, active, onClick }) {
   return (
@@ -42,6 +46,7 @@ export default function Player() {
 
   const [liked, setLiked]           = useState(false);
   const [showBanner, setShowBanner] = useState(false);
+  const [queueOpen, setQueueOpen]   = useState(false);
 
   useEffect(() => { setLiked(false); }, [currentIndex]);
 
@@ -144,14 +149,7 @@ export default function Player() {
               {song.album && <span style={{ opacity: 0.6, fontSize: 16 }}> · {song.album}</span>}
             </div>
 
-            {song.recommendReason && (
-              <div style={{ marginTop: 20, padding: 16, background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(20px)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.14)' }}>
-                <div className="mono" style={{ fontSize: 10, letterSpacing: '.18em', opacity: 0.7 }}>AI · WHY THIS SONG</div>
-                <div style={{ marginTop: 8, fontFamily: 'var(--serif-cn)', fontSize: 14, lineHeight: 1.65, opacity: 0.95 }}>
-                  {song.recommendReason}
-                </div>
-              </div>
-            )}
+            <RecommendCard explanation={song.recommendReason}/>
 
             {/* Progress */}
             <div style={{ marginTop: 24 }}>
@@ -185,16 +183,15 @@ export default function Player() {
                 {liked ? '已红心' : '红心'}
               </ChipDark>
               <ChipDark onClick={() => { dislike(); }}>不喜欢</ChipDark>
-              <span style={{
+              <button onClick={() => setQueueOpen(true)} style={{
                 height: 34, padding: '0 14px', borderRadius: 999,
                 border: '1px solid rgba(255,255,255,0.22)',
-                background: 'transparent',
-                color: '#fff',
+                background: 'transparent', color: '#fff', cursor: 'pointer',
                 fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase',
                 display: 'inline-flex', alignItems: 'center',
               }}>
                 队列 · {queue.length - currentIndex - 1}
-              </span>
+              </button>
               <ChipDark><Icon.share/> 分享</ChipDark>
             </div>
           </div>
@@ -220,20 +217,18 @@ export default function Player() {
           )}
         </div>
 
-        {/* Blacklist banner */}
-        {showBanner && (
-          <div style={{
-            position: 'fixed', bottom: 100, left: '50%', transform: 'translateX(-50%)',
-            background: 'var(--ink)', color: 'var(--bg)', borderRadius: 24,
-            padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 14, zIndex: 50,
-            maxWidth: 340, width: 'calc(100% - 40px)',
-          }}>
-            <div style={{ flex: 1, fontFamily: 'var(--serif-cn)', fontSize: 13 }}>
-              连续跳过了 3 首，要屏蔽「{lastSkippedArtist}」吗？
-            </div>
-            <button onClick={() => setShowBanner(false)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', opacity: 0.6, fontSize: 18 }}>✕</button>
-          </div>
-        )}
+        <FeedbackBanner
+          show={showBanner}
+          artistName={lastSkippedArtist}
+          onAddBlacklist={async () => {
+            if (lastSkippedArtist) {
+              await blacklistApi.add({ type: 'artist', value: lastSkippedArtist, label: lastSkippedArtist }).catch(() => {});
+            }
+            setShowBanner(false);
+          }}
+          onDismiss={() => setShowBanner(false)}
+        />
+        <QueueDrawer open={queueOpen} onClose={() => setQueueOpen(false)}/>
       </div>
     </div>
   );
