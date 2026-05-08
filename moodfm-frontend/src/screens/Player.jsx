@@ -4,6 +4,7 @@ import { MoodBlob, Icon } from '../components/atoms';
 import { usePlayerStore } from '../store/playerStore';
 import { useRadioStore } from '../store/radioStore';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
+import { useWebSocket } from '../hooks/useWebSocket';
 
 function ChipDark({ children, active, onClick }) {
   return (
@@ -34,7 +35,7 @@ function formatTime(seconds) {
 export default function Player() {
   const navigate = useNavigate();
   const { session, queue, currentIndex, mood } = usePlayerStore();
-  const { lastSkippedArtist } = useRadioStore();
+  const { lastSkippedArtist, sessionId } = useRadioStore();
 
   const song     = queue[currentIndex];
   const upcoming = queue.slice(currentIndex + 1, currentIndex + 6);
@@ -45,6 +46,21 @@ export default function Player() {
   useEffect(() => { setLiked(false); }, [currentIndex]);
 
   const { play, pause, seek, skip, like, dislike, prev, playing, progress, duration, loadingUrl } = useAudioPlayer();
+
+  const { send: wsSend } = useWebSocket('/ws/session', (msg) => {
+    if (msg.type === 'cookie_invalid') {
+      // Could navigate to /bind or show a toast — for now just log
+      console.warn('[Player] cookie_invalid notification received for platform:', msg.platform);
+    }
+  });
+
+  useEffect(() => {
+    if (!sessionId) return;
+    const id = setInterval(() => {
+      wsSend({ type: 'heartbeat', sessionId });
+    }, 30000);
+    return () => clearInterval(id);
+  }, [sessionId, wsSend]);
 
   const handleSkip = () => {
     const shouldPrompt = skip();
