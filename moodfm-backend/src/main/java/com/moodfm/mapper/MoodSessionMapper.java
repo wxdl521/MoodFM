@@ -9,6 +9,8 @@ import org.apache.ibatis.annotations.Select;
 import java.util.List;
 import java.util.Map;
 
+
+
 @Mapper
 public interface MoodSessionMapper extends BaseMapper<MoodSession> {
 
@@ -51,4 +53,15 @@ public interface MoodSessionMapper extends BaseMapper<MoodSession> {
     List<Map<String, Object>> selectDayMoodParams(
             @Param("userId") Long userId,
             @Param("date")   String date);
+
+    @Select("""
+        SELECT id, raw_input AS rawInput, scene, started_at AS startedAt
+        FROM mood_sessions
+        WHERE user_id = #{userId}
+        ORDER BY started_at DESC
+        LIMIT #{limit}
+        """)
+    List<Map<String, Object>> selectRecentSessions(
+            @Param("userId") Long userId,
+            @Param("limit")  int limit);
 }

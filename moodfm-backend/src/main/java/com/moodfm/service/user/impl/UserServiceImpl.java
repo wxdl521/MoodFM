@@ -8,28 +8,45 @@ import com.moodfm.common.result.ResultCode;
 import com.moodfm.common.util.JwtUtil;
 import com.moodfm.domain.dto.auth.LoginRequest;
 import com.moodfm.domain.dto.auth.RegisterRequest;
+import com.moodfm.domain.dto.user.ChangePasswordRequest;
 import com.moodfm.domain.dto.user.PreferencesRequest;
+import com.moodfm.domain.dto.user.UpdateProfileRequest;
 import com.moodfm.domain.entity.User;
 import com.moodfm.domain.entity.UserProfile;
 import com.moodfm.domain.vo.LoginVO;
+import com.moodfm.domain.vo.PreferencesVO;
 import com.moodfm.domain.vo.UserVO;
 import com.moodfm.mapper.UserMapper;
 import com.moodfm.mapper.UserProfileMapper;
 import com.moodfm.service.user.UserService;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.multipart.MultipartFile;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
+
+    @Value("${moodfm.upload-dir:${user.home}/moodfm-uploads}")
+    private String uploadDir;
 
     private static final int MAX_LOGIN_FAIL = 5;
     private static final Duration LOCK_DURATION = Duration.ofMinutes(15);
@@ -232,6 +249,75 @@ public class UserServiceImpl implements UserService {
             log.warn("savePreferences failed for userId {}: {}", userId, e.getMessage());
             throw new BizException(500, "偏好保存失败");
         }
+    }
+
+    @Override
+    public void updateProfile(Long userId, UpdateProfileRequest request) {
+        User user = getById(userId);
+        if (StringUtils.hasText(request.getUsername())) {
+            user.setUsername(request.getUsername());
+        }
+        if (StringUtils.hasText(request.getPhone())) {
+            user.setPhone(request.getPhone());
+        }
+        userMapper.updateById(user);
+    }
+
+    @Override
+    public void changePassword(Long userId, ChangePasswordRequest request) {
+        User user = getById(userId);
+        if (!passwordEncoder.matches(request.getOldPassword(), user.getPasswordHash())) {
+            throw new BizException(ResultCode.WRONG_PASSWORD, "原密码不正确");
+        }
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userMapper.updateById(user);
+    }
+
+    @Override
+    public String uploadAvatar(Long userId, MultipartFile file) {
+        String ext = StringUtils.getFilenameExtension(file.getOriginalFilename());
+        if (ext == null) ext = "jpg";
+        String filename = userId + "_" + UUID.randomUUID().toString().replace("-", "") + "." + ext;
+        try {
+            Path dir = Paths.get(uploadDir, "avatars");
+            Files.createDirectories(dir);
+            file.transferTo(dir.resolve(filename));
+        } catch (IOException e) {
+            throw new BizException(500, "头像上传失败: " + e.getMessage());
+        }
+        String avatarUrl = "/uploads/avatars/" + filename;
+        User user = getById(userId);
+        user.setAvatarUrl(avatarUrl);
+        userMapper.updateById(user);
+        return avatarUrl;
+    }
+
+    @Override
+    public PreferencesVO getPreferences(Long userId) {
+        UserProfile profile = userProfileMapper.selectByUserId(userId);
+        if (profile == null) {
+            return PreferencesVO.builder().genres(List.of()).languages(List.of()).build();
+        }
+        try {
+            List<String> genres = profile.getGenreWeights() != null
+                    ? objectMapper.readValue(profile.getGenreWeights(),
+                        objectMapper.getTypeFactory().constructCollectionType(List.class, String.class))
+                    : List.of();
+            List<String> langs = profile.getLanguagePreferences() != null
+                    ? objectMapper.readValue(profile.getLanguagePreferences(),
+                        objectMapper.getTypeFactory().constructCollectionType(List.class, String.class))
+                    : List.of();
+            return PreferencesVO.builder().genres(genres).languages(langs).build();
+        } catch (Exception e) {
+            return PreferencesVO.builder().genres(List.of()).languages(List.of()).build();
+        }
+    }
+
+    @Override
+    public void deleteAccount(Long userId) {
+        User user = getById(userId);
+        user.setStatus(0); // soft delete via @TableLogic
+        userMapper.updateById(user);
     }
 
     private UserVO toUserVO(User user) {

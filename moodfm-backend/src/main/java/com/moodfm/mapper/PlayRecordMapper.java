@@ -142,6 +142,44 @@ public interface PlayRecordMapper extends BaseMapper<PlayRecord> {
             @Param("days")   int days);
 
     @Select("""
+        SELECT pr.id,
+               pr.session_id    AS sessionId,
+               pr.song_id       AS songId,
+               pr.platform,
+               pr.played_seconds AS playedSeconds,
+               pr.total_seconds  AS totalSeconds,
+               pr.action,
+               pr.played_at     AS playedAt,
+               s.title,
+               s.artist,
+               s.cover_url      AS coverUrl,
+               ms.scene
+        FROM play_records pr
+        LEFT JOIN songs s  ON pr.song_id  = s.id
+        LEFT JOIN mood_sessions ms ON pr.session_id = ms.id
+        WHERE pr.user_id = #{userId}
+          AND (#{scene} IS NULL OR ms.scene = #{scene})
+        ORDER BY pr.played_at DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+        """)
+    List<Map<String, Object>> selectHistory(
+            @Param("userId")   Long userId,
+            @Param("scene")    String scene,
+            @Param("pageSize") int pageSize,
+            @Param("offset")   int offset);
+
+    @Select("""
+        SELECT COUNT(*)
+        FROM play_records pr
+        LEFT JOIN mood_sessions ms ON pr.session_id = ms.id
+        WHERE pr.user_id = #{userId}
+          AND (#{scene} IS NULL OR ms.scene = #{scene})
+        """)
+    long countHistory(
+            @Param("userId") Long userId,
+            @Param("scene")  String scene);
+
+    @Select("""
         SELECT COUNT(DISTINCT song_id)                               AS tracks,
                COALESCE(SUM(played_seconds), 0)                     AS totalSeconds,
                SUM(CASE WHEN action = 'liked'   THEN 1 ELSE 0 END) AS likes,

@@ -67,6 +67,9 @@ management:
     health:
       show-details: always
 
+moodfm:
+  upload-dir: ${UPLOAD_DIR:${user.home}/moodfm-uploads}
+
 app:
   music-adapter:
     url: ${MUSIC_ADAPTER_URL:http://localhost:3000}
