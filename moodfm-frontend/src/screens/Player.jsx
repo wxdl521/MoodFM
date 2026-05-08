@@ -169,7 +169,16 @@ export default function Player() {
                 {liked ? '已红心' : '红心'}
               </ChipDark>
               <ChipDark onClick={() => { dislike(); }}>不喜欢</ChipDark>
-              <ChipDark>队列 · {queue.length - currentIndex - 1}</ChipDark>
+              <span style={{
+                height: 34, padding: '0 14px', borderRadius: 999,
+                border: '1px solid rgba(255,255,255,0.22)',
+                background: 'transparent',
+                color: '#fff',
+                fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase',
+                display: 'inline-flex', alignItems: 'center',
+              }}>
+                队列 · {queue.length - currentIndex - 1}
+              </span>
               <ChipDark><Icon.share/> 分享</ChipDark>
             </div>
           </div>

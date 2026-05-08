@@ -50,9 +50,11 @@ export function useAudioPlayer() {
           setDuration(howl.duration());
           setLoadingUrl(false);
         },
-        onloaderror: () => {
+        onloaderror: (_id, err) => {
           if (myId !== loadIdRef.current) return;
+          console.error('[useAudioPlayer] onloaderror', s?.title, err);
           setLoadingUrl(false);
+          next(); // auto-advance to next song on load failure
         },
         onplay: () => {
           if (myId !== loadIdRef.current) return;
