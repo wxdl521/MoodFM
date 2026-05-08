@@ -10,6 +10,15 @@ import Playlist from './screens/Playlist';
 import Insights from './screens/Insights';
 import Calendar from './screens/Calendar';
 import Weekly from './screens/Weekly';
+import Profile from './screens/Profile';
+import Settings from './screens/Settings';
+import Platforms from './screens/Platforms';
+import Blacklist from './screens/Blacklist';
+import History from './screens/History';
+import Loved from './screens/Loved';
+import PlaylistList from './screens/PlaylistList';
+import SongDetail from './screens/SongDetail';
+import ErrorPage from './screens/ErrorPage';
 
 function RequireAuth({ children }) {
   const token = useAuthStore(s => s.token);
@@ -31,7 +40,15 @@ export default function App() {
         <Route path="/insights"      element={<RequireAuth><Insights /></RequireAuth>} />
         <Route path="/calendar"      element={<RequireAuth><Calendar /></RequireAuth>} />
         <Route path="/weekly/:id"    element={<RequireAuth><Weekly /></RequireAuth>} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/profile"       element={<RequireAuth><Profile /></RequireAuth>} />
+        <Route path="/settings"      element={<RequireAuth><Settings /></RequireAuth>} />
+        <Route path="/settings/platforms" element={<RequireAuth><Platforms /></RequireAuth>} />
+        <Route path="/settings/blacklist" element={<RequireAuth><Blacklist /></RequireAuth>} />
+        <Route path="/history"       element={<RequireAuth><History /></RequireAuth>} />
+        <Route path="/likes"         element={<RequireAuth><Loved /></RequireAuth>} />
+        <Route path="/playlists"     element={<RequireAuth><PlaylistList /></RequireAuth>} />
+        <Route path="/song/:id"      element={<RequireAuth><SongDetail /></RequireAuth>} />
+        <Route path="*" element={<ErrorPage />} />
       </Routes>
     </BrowserRouter>
   );
