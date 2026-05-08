@@ -8,6 +8,6 @@ export const radioApi = {
 
   getSessions: (limit = 5) => api.get(`/radio/sessions?limit=${limit}`),
 
-  start: (body) => api.post('/api/radio/start', body).then(r => r.data.data),
-  batchFeedback: (body) => api.post('/api/radio/feedback/batch', body).then(r => r.data),
+  start: (body) => api.post('/radio/start', body),
+  batchFeedback: (body) => api.post('/radio/feedback/batch', body),
 };

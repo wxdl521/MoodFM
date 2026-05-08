@@ -49,12 +49,9 @@ export const useRadioStore = create((set, get) => ({
   // Track consecutive skips — returns true if streak hits 3
   recordSkip: (artistName) => {
     const next = get().skipStreak + 1;
-    set({ skipStreak: next, lastSkippedArtist: artistName });
-    if (next >= 3) {
-      set({ skipStreak: 0 }); // reset after triggering
-      return true; // caller should show blacklist banner
-    }
-    return false;
+    const triggered = next >= 3;
+    set({ skipStreak: triggered ? 0 : next, lastSkippedArtist: artistName });
+    return triggered;
   },
 
   // Reset skip streak on non-skip events (like/complete)
