@@ -30,7 +30,7 @@ function Segment({ options, value, onChange }) {
       border: '1px solid var(--rule)', borderRadius: 999, padding: 2, flexShrink: 0,
     }}>
       {options.map((opt, i) => (
-        <button key={i} onClick={() => onChange(i)} style={{
+        <button key={opt} onClick={() => onChange(i)} style={{
           padding: '4px 12px', borderRadius: 999, border: 'none', cursor: 'pointer',
           background: value === i ? 'var(--ink)' : 'transparent',
           color: value === i ? 'var(--bg)' : 'var(--ink-2)',
