@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MoodBlob, Icon } from '../components/atoms';
 import { usePlayerStore } from '../store/playerStore';
@@ -41,6 +41,8 @@ export default function Player() {
 
   const [liked, setLiked]           = useState(false);
   const [showBanner, setShowBanner] = useState(false);
+
+  useEffect(() => { setLiked(false); }, [currentIndex]);
 
   const { play, pause, seek, skip, like, dislike, prev, playing, progress, duration, loadingUrl } = useAudioPlayer();
 
@@ -154,7 +156,7 @@ export default function Player() {
                 style={{ ...ctrlBtn, width: 64, height: 64, background: '#fff', color: 'var(--ink)', opacity: loadingUrl ? 0.6 : 1 }}>
                 {playing ? <Icon.pause/> : <Icon.play/>}
               </button>
-              <button style={ctrlBtn} onClick={() => { dislike(); }}><Icon.next/></button>
+              <button style={ctrlBtn} onClick={handleSkip}><Icon.next/></button>
               <button style={{ ...ctrlBtn, marginLeft: 12 }} onClick={handleSkip}>
                 <Icon.skip/>
               </button>

@@ -97,7 +97,7 @@ export function useAudioPlayer() {
   useEffect(() => {
     if (song) loadSong(song);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [currentIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentIndex, loadSong]); // loadSong is useCallback — stable unless session/next changes
 
   // Cleanup on unmount
   useEffect(() => {
