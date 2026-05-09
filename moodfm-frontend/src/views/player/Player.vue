@@ -258,11 +258,27 @@
     <Transition name="fade">
       <div v-if="showLyrics" class="lyrics-overlay" @click="showLyrics = false">
         <div class="lyrics-inner" @click.stop>
-          <div class="mono" style="font-size: 10px; letter-spacing: .18em; opacity: .7; margin-bottom: 20px">LYRICS · 歌词</div>
-          <div style="font-family: var(--serif-cn); font-size: 18px; line-height: 2.2; opacity: .9">
+          <div class="mono" style="font-size: 10px; letter-spacing: .18em; opacity: .7; margin-bottom: 20px">
+            LYRICS · 歌词 · {{ songTitle }}
+          </div>
+
+          <div v-if="lyricsLoading" style="font-family: var(--serif-cn); font-size: 16px; opacity: .6; padding: 40px 0">
+            加载中…
+          </div>
+
+          <div v-else-if="!lyricsLines.length" style="font-family: var(--serif-cn); font-size: 18px; line-height: 2.2; opacity: .9">
             <p>暂无歌词</p>
             <p style="font-size: 13px; opacity: .6; margin-top: 16px">此曲只应天上有，人间哪得几回闻</p>
           </div>
+
+          <div v-else ref="lyricsScrollEl" class="lyrics-lines">
+            <p
+              v-for="(line, i) in lyricsLines"
+              :key="i"
+              :class="['lyric-line', { 'lyric-line--active': i === activeLyricIdx }]"
+            >{{ line.text }}</p>
+          </div>
+
           <button class="chip-btn" style="margin-top: 24px" @click="showLyrics = false">关闭</button>
         </div>
       </div>
@@ -271,7 +287,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePlayerStore } from '@/stores/player'
 import { useRadioStore } from '@/stores/radio'
@@ -279,6 +295,7 @@ import { useUiStore } from '@/stores/ui'
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import { blacklistApi } from '@/api/blacklist'
+import { songApi, type LyricLine } from '@/api/song'
 
 const router = useRouter()
 const player = usePlayerStore()
@@ -287,9 +304,14 @@ const ui     = useUiStore()
 const audio  = useAudioPlayer()
 
 // ── Local state ─────────────────────────────────────────────────────────────
-const liked        = ref(false)
-const showLyrics   = ref(false)
-const bannerArtist = ref<string | null>(null)
+const liked         = ref(false)
+const showLyrics    = ref(false)
+const bannerArtist  = ref<string | null>(null)
+
+// ── Lyrics state ─────────────────────────────────────────────────────────────
+const lyricsLines    = ref<LyricLine[]>([])
+const lyricsLoading  = ref(false)
+const lyricsScrollEl = ref<HTMLElement | null>(null)
 
 // Progress simulation when no real audio
 let simTimer: ReturnType<typeof setInterval> | null = null
@@ -323,6 +345,47 @@ const songTags = computed(() => {
   const tags = player.currentSong?.tags
   if (tags && tags.length) return '· ' + tags.join(' · ')
   return '· 低唤醒 · 环境音 · BPM 60'
+})
+
+// ── Lyrics logic ─────────────────────────────────────────────────────────────
+const activeLyricIdx = computed(() => {
+  if (!lyricsLines.value.length) return -1
+  const ms = currentTime.value * 1000
+  let idx = 0
+  for (let i = 0; i < lyricsLines.value.length; i++) {
+    if (lyricsLines.value[i].time <= ms) idx = i
+    else break
+  }
+  return idx
+})
+
+async function loadLyrics() {
+  const song = player.currentSong
+  if (!song?.id) return
+  lyricsLoading.value = true
+  try {
+    const lines = await songApi.lyrics(song.id)
+    lyricsLines.value = Array.isArray(lines) ? lines.filter(l => l.text?.trim()) : []
+  } catch {
+    lyricsLines.value = []
+  } finally {
+    lyricsLoading.value = false
+  }
+}
+
+watch(showLyrics, (open) => {
+  if (open && !lyricsLines.value.length) loadLyrics()
+})
+
+watch(() => player.currentSong?.id, () => {
+  lyricsLines.value = []
+})
+
+watch(activeLyricIdx, async (idx) => {
+  if (!showLyrics.value || idx < 0 || !lyricsScrollEl.value) return
+  await nextTick()
+  const el = lyricsScrollEl.value.children[idx] as HTMLElement | undefined
+  el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
 })
 
 // ── Queue placeholder (desktop strip) ───────────────────────────────────────
@@ -788,8 +851,8 @@ onUnmounted(() => {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(16px);
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(20px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -797,10 +860,40 @@ onUnmounted(() => {
 }
 
 .lyrics-inner {
-  max-width: 480px;
+  max-width: 520px;
   width: 100%;
   color: #fff;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-height: 85vh;
+}
+
+.lyrics-lines {
+  width: 100%;
+  max-height: 58vh;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 0 8px;
+}
+
+.lyrics-lines::-webkit-scrollbar { display: none; }
+
+.lyric-line {
+  font-family: var(--serif-cn);
+  font-size: 16px;
+  line-height: 2.4;
+  opacity: 0.35;
+  transition: opacity 0.3s ease, font-size 0.25s ease, color 0.25s ease;
+  margin: 0;
+  cursor: default;
+}
+
+.lyric-line--active {
+  font-size: 22px;
+  opacity: 1;
+  color: #fff;
 }
 
 /* ── Transitions ──────────────────────────────────────────────────── */

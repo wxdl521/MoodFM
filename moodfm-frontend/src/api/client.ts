@@ -12,7 +12,14 @@ api.interceptors.request.use((config) => {
 });
 
 api.interceptors.response.use(
-  (res) => res.data,
+  (res) => {
+    const body = res.data
+    // Unwrap Spring R<T> envelope: { code, message, data }
+    if (body && typeof body === 'object' && 'code' in body && 'data' in body) {
+      return body.data
+    }
+    return body
+  },
   (err) => {
     if (err.response?.status === 401) {
       localStorage.removeItem('moodfm_token');
