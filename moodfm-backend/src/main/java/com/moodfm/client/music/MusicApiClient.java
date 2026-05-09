@@ -142,6 +142,40 @@ public class MusicApiClient {
         }
     }
 
+    /** 获取用户歌单列表 */
+    @CircuitBreaker(name = "music-adapter", fallbackMethod = "fallbackNode")
+    public JsonNode getUserPlaylists(String platform, String cookie) {
+        try {
+            String json = RestClient.create()
+                    .get()
+                    .uri(adapterUrl + "/{p}/user/playlists", route(platform))
+                    .header("X-Cookie", cookie)
+                    .retrieve()
+                    .body(String.class);
+            return objectMapper.readTree(json);
+        } catch (Exception e) {
+            log.warn("Failed to get user playlists from {}", platform, e);
+            return objectMapper.createObjectNode();
+        }
+    }
+
+    /** 获取歌单曲目 */
+    @CircuitBreaker(name = "music-adapter", fallbackMethod = "fallbackNode")
+    public JsonNode getPlaylistTracks(String platform, String playlistId, String cookie) {
+        try {
+            String json = RestClient.create()
+                    .get()
+                    .uri(adapterUrl + "/{p}/playlist/tracks?id={id}", route(platform), playlistId)
+                    .header("X-Cookie", cookie)
+                    .retrieve()
+                    .body(String.class);
+            return objectMapper.readTree(json);
+        } catch (Exception e) {
+            log.warn("Failed to get playlist tracks from {}", platform, e);
+            return objectMapper.createObjectNode();
+        }
+    }
+
     // -------- Fallbacks --------
 
     private String fallbackQrKey(String platform, Exception e) {
@@ -157,6 +191,18 @@ public class MusicApiClient {
     }
 
     private JsonNode fallbackSongs(String platform, String keywords, int limit, Exception e) {
+        return objectMapper.createObjectNode();
+    }
+
+    private JsonNode fallbackNode(Exception e) {
+        return objectMapper.createObjectNode();
+    }
+
+    private JsonNode fallbackNode(String platform, String cookie, Exception e) {
+        return objectMapper.createObjectNode();
+    }
+
+    private JsonNode fallbackNode(String platform, String id, String cookie, Exception e) {
         return objectMapper.createObjectNode();
     }
 }
