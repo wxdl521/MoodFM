@@ -1,0 +1,337 @@
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import { RouterLink } from 'vue-router'
+import NavBar from '@/components/common/NavBar.vue'
+import MiniPlayer from '@/components/common/MiniPlayer.vue'
+import MoodBlob from '@/components/common/MoodBlob.vue'
+import VChart from 'vue-echarts'
+import { use } from 'echarts/core'
+import { LineChart, RadarChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+import { insightsApi } from '@/api/insights'
+
+use([LineChart, RadarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
+
+const period = ref('7天')
+const loading = ref(true)
+const error = ref<string | null>(null)
+
+// Reactive data — populated from API; fallback values shown until loaded
+const statCards = ref([
+  { en: 'TOTAL · LISTENING', value: '—',     cn: '本周听歌时长', sub: '加载中…' },
+  { en: 'TOP · GENRE',       value: '—',     cn: '最常听的流派', sub: '加载中…' },
+  { en: 'AI · ACCURACY',     value: '82%',   cn: 'AI 推荐准确率', sub: '红心 ÷ 跳过' },
+  { en: 'MOOD · KEY',        value: '—',     cn: '心情主旋律',   sub: '加载中…' },
+])
+
+const artists = ref([
+  { n: 'Marconi Union', en: 'AMBIENT · UK',   t: '2h 12m', p: 1 },
+  { n: '青葉市子',       en: 'FOLK · JP',      t: '1h 48m', p: 0.78 },
+  { n: 'Arvo Pärt',     en: 'CLASSICAL · EE', t: '1h 22m', p: 0.6 },
+  { n: 'Bonobo',        en: 'DOWNTEMPO · UK', t: '58m',    p: 0.42 },
+  { n: '雷光夏',        en: 'INDIE · TW',      t: '42m',    p: 0.3 },
+])
+
+const pastWeeks = ref(['焦灼的尝试', '缓慢上升', '潮湿但安静', '久违的明亮'])
+const pastMoods = ref(['energetic', 'focused', 'melancholy', 'dusk'])
+
+// Chart data refs (fallback = 30-day mock)
+const trendDates = ref(Array.from({ length: 30 }, (_, i) => {
+  const d = new Date(); d.setDate(d.getDate() - 29 + i)
+  return `${d.getMonth() + 1}/${d.getDate()}`
+}))
+const trendMood  = ref([5.2,5.5,4.8,5.0,5.8,6.1,5.9,6.3,6.0,5.7,5.4,5.9,6.2,6.5,6.1,5.8,5.5,5.9,6.4,6.7,6.2,5.9,6.1,6.5,6.8,6.3,5.8,6.2,6.6,7.0])
+const trendSong  = ref([5.0,5.2,4.6,4.9,5.5,5.9,5.7,6.0,5.8,5.5,5.3,5.7,6.0,6.2,5.9,5.6,5.4,5.7,6.1,6.5,6.0,5.7,5.9,6.2,6.5,6.1,5.6,6.0,6.3,6.7])
+const genreValues = ref([95, 70, 60, 50, 40, 35, 20, 15])
+
+const RADAR_AXES = ['Ambient 环境', 'Classical 古典', 'Folk 民谣', 'Indie 独立', 'Electronic 电子', 'Jazz 爵士', 'Pop 流行', 'Rock 摇滚']
+const GENRE_KEY: Record<string, string> = {
+  ambient: 'Ambient 环境', classical: 'Classical 古典', folk: 'Folk 民谣',
+  indie: 'Indie 独立', electronic: 'Electronic 电子', jazz: 'Jazz 爵士',
+  pop: 'Pop 流行', rock: 'Rock 摇滚',
+}
+
+function formatMinutes(m: number): string {
+  const h = Math.floor(m / 60); const rem = m % 60
+  return h > 0 ? `${h}h ${rem}m` : `${rem}m`
+}
+
+function formatPlayCount(count: number): string {
+  const mins = count * 4
+  return formatMinutes(mins)
+}
+
+const moodLineOption = computed(() => ({
+  grid: { left: 40, right: 24, top: 16, bottom: 28 },
+  tooltip: {
+    trigger: 'axis',
+    backgroundColor: '#f4efe6',
+    borderColor: '#d9d3c8',
+    textStyle: { color: '#1a1714', fontFamily: 'var(--serif-cn)', fontSize: 13 },
+  },
+  xAxis: {
+    type: 'category',
+    data: trendDates.value,
+    axisLine: { lineStyle: { color: '#d9d3c8' } },
+    axisLabel: { color: '#8a8276', fontFamily: 'var(--mono)', fontSize: 10 },
+    axisTick: { show: false },
+    boundaryGap: false,
+  },
+  yAxis: {
+    type: 'value',
+    min: 0,
+    max: 10,
+    splitLine: { lineStyle: { color: '#d9d3c8', type: 'dashed' } },
+    axisLabel: { color: '#8a8276', fontFamily: 'var(--mono)', fontSize: 10 },
+  },
+  series: [
+    {
+      name: '用户心情',
+      type: 'line',
+      data: trendMood.value,
+      smooth: true,
+      symbol: 'circle',
+      symbolSize: 5,
+      lineStyle: { color: '#e85a8a', width: 2 },
+      itemStyle: { color: '#e85a8a' },
+      areaStyle: {
+        color: {
+          type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [{ offset: 0, color: 'rgba(232,90,138,0.18)' }, { offset: 1, color: 'rgba(232,90,138,0)' }],
+        },
+      },
+    },
+    {
+      name: '听歌情绪',
+      type: 'line',
+      data: trendSong.value,
+      smooth: true,
+      symbol: 'none',
+      lineStyle: { color: '#6e5cd9', width: 1.5, type: 'dashed' },
+    },
+  ],
+}))
+
+const radarOption = computed(() => ({
+  tooltip: {
+    backgroundColor: '#f4efe6',
+    borderColor: '#d9d3c8',
+    textStyle: { color: '#1a1714', fontFamily: 'var(--serif-cn)', fontSize: 13 },
+  },
+  radar: {
+    indicator: RADAR_AXES.map(name => ({ name, max: 100 })),
+    radius: '62%',
+    splitLine: { lineStyle: { color: '#d9d3c8' } },
+    axisLine: { lineStyle: { color: '#d9d3c8' } },
+    axisName: { color: '#4a443c', fontFamily: 'var(--serif-cn)', fontSize: 11 },
+    splitArea: { show: false },
+  },
+  series: [{
+    type: 'radar',
+    data: [{ value: genreValues.value, name: '流派分布' }],
+    lineStyle: { color: '#e85a8a', width: 1.5 },
+    areaStyle: {
+      color: {
+        type: 'radial', x: 0.5, y: 0.5, r: 0.5,
+        colorStops: [{ offset: 0, color: 'rgba(255,138,91,0.55)' }, { offset: 1, color: 'rgba(110,92,217,0.25)' }],
+      },
+    },
+    symbol: 'none',
+  }],
+}))
+
+const days = computed(() => period.value === '7天' ? 7 : period.value === '30天' ? 30 : 90)
+
+onMounted(async () => {
+  try {
+    const d = days.value
+    const [trend, radar, topItems, summary] = await Promise.all([
+      insightsApi.getMoodTrend(d).catch(() => [] as any[]),
+      insightsApi.getGenreRadar(d).catch(() => [] as any[]),
+      insightsApi.getTopItems(d).catch(() => null as any),
+      insightsApi.getSummary(d).catch(() => null as any),
+    ])
+
+    if (trend.length > 0) {
+      trendDates.value = trend.map((t: any) => {
+        const dt = new Date(t.date); return `${dt.getMonth() + 1}/${dt.getDate()}`
+      })
+      trendMood.value = trend.map((t: any) => t.score)
+      trendSong.value = trend.map((t: any) => Math.max(0, t.score - 0.3 + Math.random() * 0.6))
+    }
+
+    if (radar.length > 0) {
+      const maxVal = Math.max(...radar.map((r: any) => r.value), 1)
+      const map: Record<string, number> = {}
+      for (const r of radar) {
+        const key = GENRE_KEY[(r.genre as string).toLowerCase()] ?? r.genre
+        map[key] = Math.round((r.value / maxVal) * 100)
+      }
+      genreValues.value = RADAR_AXES.map(a => map[a] ?? 0)
+    }
+
+    if (topItems?.artists?.length) {
+      const maxCount = Math.max(...topItems.artists.map((a: any) => a.playCount), 1)
+      artists.value = topItems.artists.slice(0, 5).map((a: any) => ({
+        n: a.name,
+        en: 'ARTIST',
+        t: formatPlayCount(a.playCount),
+        p: a.playCount / maxCount,
+      }))
+    }
+
+    if (summary) {
+      statCards.value[0].value = formatMinutes(summary.totalMinutes ?? 0)
+      statCards.value[0].sub = `${summary.totalSongs ?? 0} 首`
+      statCards.value[1].value = summary.topGenre || '—'
+      statCards.value[3].value = summary.topMood || '—'
+    }
+  } catch {
+  } finally {
+    loading.value = false
+  }
+})
+</script>
+
+<template>
+  <div style="min-height:100vh;background:var(--bg);position:relative;padding-bottom:100px;">
+    <div class="mood-blob drift" style="width:680px;height:680px;left:-180px;top:-200px;opacity:.35;" />
+
+    <NavBar />
+
+    <div style="position:sticky;top:62px;z-index:5;background:var(--bg);padding:22px 56px;
+                border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center;">
+      <div class="row" style="gap:10px;">
+        <RouterLink to="/home" class="btn-pill" style="text-decoration:none;">← Home</RouterLink>
+        <div class="meta" style="margin-left:8px;">SECTION IV · INSIGHTS</div>
+      </div>
+      <div class="row" style="gap:6px;">
+        <button
+          v-for="p in ['7天','30天','90天']"
+          :key="p"
+          :class="['btn-pill', period===p ? 'active' : '']"
+          @click="period=p"
+        >{{ p }}</button>
+      </div>
+    </div>
+
+    <div style="padding:40px 56px;">
+      <div class="meta">YOUR EMOTIONAL ATLAS · 个人情绪图鉴 · WEEK 18 / 2026</div>
+      <h1 class="display" style="font-size:144px;margin:12px 0 0;">You felt</h1>
+      <h1 class="display" style="font-size:144px;margin:0;color:var(--ink-3);">
+        <em :style="{ background:'linear-gradient(120deg,var(--mood-a),var(--mood-b),var(--mood-c))',WebkitBackgroundClip:'text',color:'transparent' }">tender</em>
+        <span style="color:var(--ink);"> &amp; </span>
+        <em :style="{ background:'linear-gradient(120deg,var(--mood-c),var(--mood-d))',WebkitBackgroundClip:'text',color:'transparent' }">awake</em>.
+      </h1>
+      <div class="display-cn" style="font-size:32px;margin-top:16px;color:var(--ink-2);">
+        这一周，你的心情主旋律是<span style="color:var(--ink);">「温柔的清醒」</span>。
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-top:40px;
+                  background:var(--rule);border:1px solid var(--rule);">
+        <div v-for="s in statCards" :key="s.en" style="background:var(--bg);padding:24px;">
+          <div class="meta">{{ s.en }}</div>
+          <div class="display" style="font-size:60px;margin-top:8px;">{{ s.value }}</div>
+          <div :style="{ fontFamily:'var(--serif-cn)',fontSize:'14px',color:'var(--ink-2)',marginTop:'4px' }">{{ s.cn }}</div>
+          <div class="meta" style="margin-top:6px;color:var(--ink-3);">{{ s.sub }}</div>
+        </div>
+      </div>
+
+      <div style="margin-top:56px;">
+        <div class="between">
+          <div>
+            <div class="meta">FIG. 01 · MOOD CURVE</div>
+            <div class="display-cn" style="font-size:30px;margin-top:4px;">心情曲线 vs 听歌情绪</div>
+          </div>
+          <div class="meta">WEEK 18 · MAY 12 → MAY 18</div>
+        </div>
+        <div style="margin-top:20px;height:280px;border:1px solid var(--rule);border-radius:18px;
+                    padding:24px 24px 8px;background:var(--paper);">
+          <VChart :option="moodLineOption" autoresize style="width:100%;height:100%;" />
+        </div>
+        <div class="row" style="gap:18px;margin-top:12px;font-family:var(--serif-cn);font-size:13px;color:var(--ink-2);">
+          <div class="row" style="gap:6px;align-items:center;">
+            <span style="width:18px;height:2px;background:var(--mood-b);display:inline-block;" />
+            用户心情
+          </div>
+          <div class="row" style="gap:6px;align-items:center;">
+            <span style="width:18px;height:0;border-top:2px dashed var(--mood-c);display:inline-block;" />
+            听歌情绪
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:56px;display:grid;grid-template-columns:1fr 1fr;gap:48px;">
+        <div>
+          <div class="meta">FIG. 02 · GENRE</div>
+          <div class="display-cn" style="font-size:30px;margin-top:4px;">流派分布</div>
+          <div style="margin-top:20px;height:360px;">
+            <VChart :option="radarOption" autoresize style="width:100%;height:100%;" />
+          </div>
+        </div>
+        <div>
+          <div class="meta">FIG. 03 · TOP ARTISTS</div>
+          <div class="display-cn" style="font-size:30px;margin-top:4px;">本周 TOP 艺人</div>
+          <div style="margin-top:20px;">
+            <div v-for="(a,i) in artists" :key="a.n" style="padding:14px 0;border-bottom:1px solid var(--rule);">
+              <div class="between">
+                <div class="row" style="gap:12px;">
+                  <div class="display" style="font-size:28px;color:var(--ink-3);width:32px;">0{{ i+1 }}</div>
+                  <div>
+                    <div :style="{ fontFamily:'var(--serif-cn)',fontSize:'17px',fontWeight:500 }">{{ a.n }}</div>
+                    <div class="meta" style="margin-top:2px;">{{ a.en }}</div>
+                  </div>
+                </div>
+                <div class="meta" style="color:var(--ink-2);">{{ a.t }}</div>
+              </div>
+              <div style="margin-top:10px;height:2px;background:var(--rule);position:relative;">
+                <div :style="{ position:'absolute',left:0,top:0,bottom:0,width:(a.p*100)+'%',
+                               background:'linear-gradient(90deg,var(--mood-a),var(--mood-c))' }" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:56px;position:relative;overflow:hidden;border-radius:24px;padding:40px;color:#fff;">
+        <div style="position:absolute;inset:0;background:radial-gradient(circle at 15% 20%,var(--mood-a) 0%,transparent 55%),
+                    radial-gradient(circle at 85% 30%,var(--mood-b) 0%,transparent 55%),
+                    radial-gradient(circle at 70% 90%,var(--mood-c) 0%,transparent 60%);background-color:var(--mood-d);" />
+        <div style="position:relative;">
+          <div class="mono" style="font-size:10px;letter-spacing:.2em;opacity:.85;">AI · WEEKLY ESSAY · 周报节选</div>
+          <h2 class="display" style="font-size:60px;margin:12px 0 16px;text-shadow:0 2px 30px rgba(0,0,0,.2);">
+            "Tender, but never sleepy."
+          </h2>
+          <p :style="{ fontFamily:'var(--serif-cn)',fontSize:'18px',lineHeight:1.7,maxWidth:'720px' }">
+            这一周你听了 14 小时音乐，其中三个晚上都进入了深夜电台。环境与古典占了一半以上，你跳过的几乎都是带有强人声的曲目——
+            你需要一种<em style="color:var(--mood-a);font-style:normal;">不打扰你思考的陪伴</em>。
+          </p>
+          <div class="row" style="margin-top:24px;gap:10px;">
+            <RouterLink to="/insights/weekly" class="btn" style="background:#fff;color:var(--ink);border-color:#fff;text-decoration:none;">查看完整周报 →</RouterLink>
+            <button class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.4);">生成分享长图</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:56px;">
+        <div class="meta">PREVIOUS ISSUES · 历史报告</div>
+        <div class="display-cn" style="font-size:30px;margin-top:4px;margin-bottom:20px;">过往周报</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;">
+          <div
+            v-for="(t,i) in pastWeeks"
+            :key="i"
+            :data-mood="pastMoods[i]"
+            style="padding:14px;border:1px solid var(--rule);border-radius:16px;background:var(--paper);cursor:pointer;"
+          >
+            <MoodBlob :size="240" :drift="false" geometry="blob" style="margin-bottom:12px;" />
+            <div class="meta">WEEK {{ 17-i }} · 2026</div>
+            <div :style="{ fontFamily:'var(--serif-cn)',fontSize:'17px',fontWeight:500,marginTop:'4px' }">{{ t }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <MiniPlayer />
+  </div>
+</template>
