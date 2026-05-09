@@ -200,6 +200,60 @@
 
     </div><!-- /player-fg -->
 
+    <!-- ── Queue Drawer ──────────────────────────────────────────────── -->
+    <Transition name="fade">
+      <div
+        v-if="ui.queueDrawerOpen"
+        style="position:fixed;inset:0;z-index:50;background:rgba(0,0,0,0.55);display:flex;flex-direction:column;justify-content:flex-end;"
+        @click="ui.toggleQueueDrawer()"
+      >
+        <div style="background:var(--bg);border-radius:20px 20px 0 0;padding:24px 24px 48px;max-height:65vh;overflow-y:auto;" @click.stop>
+          <div class="mono" style="font-size:10px;letter-spacing:.2em;opacity:.5;text-align:center;margin-bottom:20px;">
+            UP NEXT · 接下来播放 · {{ player.queue.length }} 首
+          </div>
+          <div v-if="player.queue.length === 0" style="text-align:center;padding:32px 0;font-family:var(--serif-cn);font-size:15px;color:var(--ink-3);">
+            队列为空
+          </div>
+          <div
+            v-for="(song, i) in player.queue.slice(0, 12)"
+            :key="song.id ?? i"
+            class="row"
+            style="gap:14px;padding:12px 0;border-bottom:1px solid var(--rule);align-items:center;"
+          >
+            <span class="mono" style="font-size:11px;color:var(--ink-3);width:24px;flex-shrink:0;">{{ String(i + 1).padStart(2,'0') }}</span>
+            <div style="flex:1;min-width:0;">
+              <div style="font-family:var(--serif-en);font-style:italic;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ song.title }}</div>
+              <div class="meta" style="margin-top:2px;">{{ song.artist }}</div>
+            </div>
+            <span class="mono" style="font-size:11px;color:var(--ink-3);flex-shrink:0;">{{ formatTime(song.duration) }}</span>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- ── Feedback Banner（连续跳过提示）────────────────────────────── -->
+    <Transition name="fade">
+      <div
+        v-if="bannerArtist"
+        style="position:fixed;bottom:100px;left:50%;transform:translateX(-50%);z-index:60;
+               background:var(--ink);color:var(--bg);border-radius:24px;
+               padding:14px 20px;display:flex;align-items:center;gap:14px;
+               max-width:360px;width:calc(100% - 40px);box-shadow:0 8px 32px rgba(0,0,0,.3);"
+      >
+        <div style="flex:1;font-family:var(--serif-cn);font-size:14px;line-height:1.5;">
+          连续跳过了 3 首，要屏蔽「{{ bannerArtist }}」吗？
+        </div>
+        <button
+          style="background:var(--bg);color:var(--ink);border:none;border-radius:16px;padding:7px 14px;cursor:pointer;font-size:13px;flex-shrink:0;font-family:var(--serif-cn);"
+          @click="handleAddBlacklist"
+        >屏蔽</button>
+        <button
+          style="background:transparent;color:rgba(255,255,255,.6);border:none;cursor:pointer;font-size:18px;flex-shrink:0;line-height:1;"
+          @click="bannerArtist = null"
+        >✕</button>
+      </div>
+    </Transition>
+
     <!-- Lyrics overlay -->
     <Transition name="fade">
       <div v-if="showLyrics" class="lyrics-overlay" @click="showLyrics = false">
@@ -224,6 +278,7 @@ import { useRadioStore } from '@/stores/radio'
 import { useUiStore } from '@/stores/ui'
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import MoodBlob from '@/components/common/MoodBlob.vue'
+import { blacklistApi } from '@/api/blacklist'
 
 const router = useRouter()
 const player = usePlayerStore()
@@ -232,8 +287,9 @@ const ui     = useUiStore()
 const audio  = useAudioPlayer()
 
 // ── Local state ─────────────────────────────────────────────────────────────
-const liked      = ref(false)
-const showLyrics = ref(false)
+const liked        = ref(false)
+const showLyrics   = ref(false)
+const bannerArtist = ref<string | null>(null)
 
 // Progress simulation when no real audio
 let simTimer: ReturnType<typeof setInterval> | null = null
@@ -315,7 +371,21 @@ function handlePrev() {
 
 function handleSkip() {
   player.incrementSkipStreak()
+  if (player.skipStreak >= 3 && player.currentSong?.artist) {
+    bannerArtist.value = player.currentSong.artist
+    player.resetSkipStreak()
+  }
   handleNext()
+}
+
+async function handleAddBlacklist() {
+  if (!bannerArtist.value) return
+  try {
+    await blacklistApi.add({ type: 'artist', value: bannerArtist.value, label: bannerArtist.value })
+  } catch {
+    // 静默失败，不影响体验
+  }
+  bannerArtist.value = null
 }
 
 function toggleLike() {

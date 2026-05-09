@@ -20,6 +20,7 @@ const router = createRouter({
     { path: '/insights/calendar', component: () => import('@/views/insights/Calendar.vue'), meta: { requiresAuth: true } },
     { path: '/insights/weekly', component: () => import('@/views/insights/Weekly.vue'), meta: { requiresAuth: true } },
     { path: '/settings', component: () => import('@/views/settings/Settings.vue'), meta: { requiresAuth: true } },
+    { path: '/settings/platforms', component: () => import('@/views/settings/Platforms.vue'), meta: { requiresAuth: true } },
     { path: '/profile', component: () => import('@/views/Profile.vue'), meta: { requiresAuth: true } },
     { path: '/:pathMatch(.*)*', component: () => import('@/views/ErrorPage.vue') },
   ],
