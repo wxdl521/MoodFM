@@ -19,8 +19,6 @@ import com.moodfm.domain.vo.UserVO;
 import com.moodfm.mapper.UserMapper;
 import com.moodfm.mapper.UserProfileMapper;
 import com.moodfm.service.user.UserService;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.web.multipart.MultipartFile;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +49,17 @@ public class UserServiceImpl implements UserService {
     private static final int MAX_LOGIN_FAIL = 5;
     private static final Duration LOCK_DURATION = Duration.ofMinutes(15);
     private static final Duration FAIL_COUNT_TTL = Duration.ofMinutes(30);
+
+    private static final long MAX_AVATAR_SIZE = 5 * 1024 * 1024; // 5 MB
+    private static final java.util.Set<String> ALLOWED_AVATAR_TYPES = java.util.Set.of(
+            "image/jpeg", "image/png", "image/gif", "image/webp"
+    );
+    private static final java.util.Map<String, String> MIME_TO_EXT = java.util.Map.of(
+            "image/jpeg", "jpg",
+            "image/png",  "png",
+            "image/gif",  "gif",
+            "image/webp", "webp"
+    );
 
     private final UserMapper userMapper;
     private final UserProfileMapper userProfileMapper;
@@ -275,8 +284,17 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public String uploadAvatar(Long userId, MultipartFile file) {
-        String ext = StringUtils.getFilenameExtension(file.getOriginalFilename());
-        if (ext == null) ext = "jpg";
+        if (file == null || file.isEmpty()) {
+            throw new BizException(ResultCode.BAD_REQUEST, "文件不能为空");
+        }
+        if (file.getSize() > MAX_AVATAR_SIZE) {
+            throw new BizException(ResultCode.BAD_REQUEST, "头像文件不能超过 5 MB");
+        }
+        String contentType = file.getContentType();
+        if (contentType == null || !ALLOWED_AVATAR_TYPES.contains(contentType)) {
+            throw new BizException(ResultCode.BAD_REQUEST, "只支持 JPEG、PNG、GIF、WebP 格式的头像");
+        }
+        String ext = MIME_TO_EXT.get(contentType);
         String filename = userId + "_" + UUID.randomUUID().toString().replace("-", "") + "." + ext;
         try {
             Path dir = Paths.get(uploadDir, "avatars");
