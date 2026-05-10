@@ -80,6 +80,8 @@ app:
     remember-me-expire-ms: 2592000000  # 30 天
   cookie-encryption:
     key: ${COOKIE_ENCRYPTION_KEY:}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:4173}
 
 server:
   port: 8081
