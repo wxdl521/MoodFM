@@ -17,7 +17,7 @@ export const platformApi = {
     api.get(`/platforms/${platform}/qr/status?key=${encodeURIComponent(key)}`),
 
   bindCookie: (platform: PlatformId, cookie: string): Promise<PlatformBinding> =>
-    api.post(`/platforms/${platform}/bind/cookie?cookie=${encodeURIComponent(cookie)}`),
+    api.post(`/platforms/${platform}/bind/cookie`, { cookie }),
 
   sendPhoneCode: (platform: PlatformId, phone: string): Promise<void> =>
     api.post(`/platforms/${platform}/phone/code`, { phone }),

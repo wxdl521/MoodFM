@@ -50,9 +50,13 @@ public class PlatformBindingController {
     @Operation(summary = "手动 Cookie 绑定（高级用户）")
     @PostMapping("/{platform}/bind/cookie")
     public R<Void> bindByCookie(@PathVariable String platform,
-                                 @RequestParam String cookie,
+                                 @RequestBody Map<String, String> body,
                                  @AuthenticationPrincipal UserDetails userDetails) {
         Long userId = Long.parseLong(userDetails.getUsername());
+        String cookie = body.get("cookie");
+        if (cookie == null || cookie.isBlank()) {
+            return R.fail(400, "cookie 不能为空");
+        }
         platformBindingService.bindByCookie(userId, platform, cookie);
         return R.ok();
     }
