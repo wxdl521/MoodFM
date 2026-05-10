@@ -290,11 +290,15 @@ public class UserServiceImpl implements UserService {
         if (file.getSize() > MAX_AVATAR_SIZE) {
             throw new BizException(ResultCode.BAD_REQUEST, "头像文件不能超过 5 MB");
         }
-        String contentType = file.getContentType();
+        String rawContentType = file.getContentType();
+        String contentType = rawContentType != null ? rawContentType.split(";")[0].trim() : null;
         if (contentType == null || !ALLOWED_AVATAR_TYPES.contains(contentType)) {
             throw new BizException(ResultCode.BAD_REQUEST, "只支持 JPEG、PNG、GIF、WebP 格式的头像");
         }
         String ext = MIME_TO_EXT.get(contentType);
+        if (ext == null) {
+            throw new BizException(ResultCode.BAD_REQUEST, "不支持的图像格式");
+        }
         String filename = userId + "_" + UUID.randomUUID().toString().replace("-", "") + "." + ext;
         try {
             Path dir = Paths.get(uploadDir, "avatars");
