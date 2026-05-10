@@ -109,7 +109,7 @@ onMounted(async () => {
             :data-mood="it.mood"
             class="row"
             style="gap:14px;padding:10px 0;border-bottom:1px dashed var(--rule);cursor:pointer;"
-            @click="player.play()"
+            @click="player.setPlaying(true)"
           >
             <span class="mono" style="font-size:11px;color:var(--ink-3);width:50px;flex-shrink:0;">{{ it.t }}</span>
             <MoodBlob :size="40" :drift="false" geometry="blob" style="flex-shrink:0;" />

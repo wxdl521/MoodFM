@@ -72,7 +72,7 @@ const filtered = computed(() =>
           <div class="meta" style="margin-top:10px;color:var(--ink-3);">· 网易云 86 · QQ 音乐 22 · 重叠 16</div>
           <hr class="rule" style="margin:16px 0;" />
           <div class="row" style="gap:8px;">
-            <button class="btn" style="flex:1;" @click="player.play();router.push('/player')">随机播放 ▶</button>
+            <button class="btn" style="flex:1;" @click="player.setPlaying(true);router.push('/player')">随机播放 ▶</button>
             <button class="btn-pill">导出</button>
           </div>
         </div>
@@ -97,7 +97,7 @@ const filtered = computed(() =>
           :data-mood="s.mood"
           class="row"
           style="gap:14px;padding:14px 4px;border-bottom:1px solid var(--rule);cursor:pointer;"
-          @click="player.play();router.push('/player')"
+          @click="player.setPlaying(true);router.push('/player')"
         >
           <div class="mono" style="font-size:11px;color:var(--ink-3);width:26px;flex-shrink:0;">{{ String(i + 1).padStart(2, '00') }}</div>
           <MoodBlob :size="56" :drift="false" geometry="blob" style="flex-shrink:0;" />

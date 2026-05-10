@@ -91,7 +91,7 @@ onMounted(async () => {
             </div>
           </div>
           <div class="row" style="margin-top:24px;gap:10px;flex-wrap:wrap;">
-            <button class="btn" style="height:48px;padding:0 22px;" @click="player.play();router.push('/player')">▶ 播放 · PLAY ALL</button>
+            <button class="btn" style="height:48px;padding:0 22px;" @click="player.setPlaying(true);router.push('/player')">▶ 播放 · PLAY ALL</button>
             <button class="btn-pill" style="height:48px;">♡ 收藏</button>
             <button class="btn-pill" style="height:48px;">↓ 下载</button>
             <button class="btn-pill" style="height:48px;">↗ 分享</button>
@@ -129,7 +129,7 @@ onMounted(async () => {
         }"
         @mouseenter="hovIdx = i"
         @mouseleave="hovIdx = -1"
-        @click="activeIdx = i; player.play()"
+        @click="activeIdx = i; player.setPlaying(true)"
       >
         <div style="width:32px;font-family:var(--mono);font-size:13px;color:var(--ink-3);">
           {{ i === activeIdx ? '▸' : String(i + 1).padStart(2, '0') }}
