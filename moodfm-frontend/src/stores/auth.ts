@@ -16,16 +16,17 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(credentials: { email: string; password: string }) {
     const res = await authApi.login(credentials)
-    token.value = res.data.token
-    user.value = res.data.user
-    localStorage.setItem('moodfm_token', res.data.token)
-    localStorage.setItem('moodfm_user', JSON.stringify(res.data.user))
-    return res.data
+    // interceptor already unwrapped R<AuthResponse> → AuthResponse
+    token.value = res.token
+    user.value = res.user
+    localStorage.setItem('moodfm_token', res.token)
+    localStorage.setItem('moodfm_user', JSON.stringify(res.user))
+    return res
   }
 
   async function register(data: { username: string; email: string; password: string }) {
     const res = await authApi.register(data)
-    return res.data
+    return res
   }
 
   function logout() {
@@ -38,9 +39,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function fetchMe() {
     const res = await authApi.me()
-    user.value = res.data
-    localStorage.setItem('moodfm_user', JSON.stringify(res.data))
-    return res.data
+    user.value = res
+    localStorage.setItem('moodfm_user', JSON.stringify(res))
+    return res
   }
 
   return { token, user, isLoggedIn, login, register, logout, fetchMe }

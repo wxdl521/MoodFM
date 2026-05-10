@@ -14,8 +14,9 @@ export const useRadioStore = defineStore('radio', () => {
     isLoading.value = true
     try {
       const res = await radioApi.startRadio(data)
-      session.value = res.data
-      return res.data
+      // interceptor already unwrapped R<RadioSession> → RadioSession
+      session.value = res
+      return res
     } finally {
       isLoading.value = false
     }
@@ -23,13 +24,13 @@ export const useRadioStore = defineStore('radio', () => {
 
   async function sendFeedback(data: Feedback) {
     const res = await radioApi.feedback(data)
-    return res.data
+    return res
   }
 
   async function fetchRecentSessions() {
     const res = await radioApi.getSessions(5)
-    recentSessions.value = res.data
-    return res.data
+    recentSessions.value = res
+    return res
   }
 
   function setMoodText(t: string) {
