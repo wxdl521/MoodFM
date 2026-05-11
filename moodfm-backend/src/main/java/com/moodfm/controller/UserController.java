@@ -88,18 +88,36 @@ public class UserController {
         return R.ok();
     }
 
+    // ── Notification Preferences ─────────────────────────────────────
+    @Operation(summary = "获取通知偏好设置")
+    @GetMapping("/notifications/settings")
+    public R<com.moodfm.domain.vo.NotificationPrefsVO> getNotificationPrefs(
+            @AuthenticationPrincipal UserDetails ud) {
+        return R.ok(userService.getNotificationPrefs(uid(ud)));
+    }
+
+    @Operation(summary = "保存通知偏好设置")
+    @PutMapping("/notifications/settings")
+    public R<Void> saveNotificationPrefs(
+            @RequestBody com.moodfm.domain.vo.NotificationPrefsVO prefs,
+            @AuthenticationPrincipal UserDetails ud) {
+        userService.saveNotificationPrefs(uid(ud), prefs);
+        return R.ok();
+    }
+
     // ── Devices (stub) ────────────────────────────────────────────────
     @Operation(summary = "获取登录设备列表")
     @GetMapping("/devices")
-    public R<List<Object>> getDevices(@AuthenticationPrincipal UserDetails ud) {
-        return R.ok(List.of()); // 暂无设备表，返回空列表
+    public R<List<Map<String, Object>>> getDevices(@AuthenticationPrincipal UserDetails ud) {
+        return R.ok(userService.getDevices(Long.parseLong(ud.getUsername())));
     }
 
     @Operation(summary = "吊销指定设备")
     @DeleteMapping("/devices/{id}")
-    public R<Void> revokeDevice(@PathVariable Long id,
+    public R<Void> revokeDevice(@PathVariable String id,
                                 @AuthenticationPrincipal UserDetails ud) {
-        return R.ok(); // stub
+        userService.revokeDevice(Long.parseLong(ud.getUsername()), id);
+        return R.ok();
     }
 
     // ── Account ───────────────────────────────────────────────────────
@@ -107,6 +125,13 @@ public class UserController {
     @DeleteMapping("/account")
     public R<Void> deleteAccount(@AuthenticationPrincipal UserDetails ud) {
         userService.deleteAccount(uid(ud));
+        return R.ok();
+    }
+
+    @Operation(summary = "清除所有个人数据（保留账号）")
+    @DeleteMapping("/data/all")
+    public R<Void> deleteAllData(@AuthenticationPrincipal UserDetails ud) {
+        userService.deleteAllData(uid(ud));
         return R.ok();
     }
 }

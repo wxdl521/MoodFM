@@ -100,7 +100,7 @@ async function removeItem(item: BlacklistItem) {
 onMounted(async () => {
   try {
     const res = await blacklistApi.getAll()
-    const raw: any[] = res.data ?? []
+    const raw: any[] = (res as any[]) ?? []
     items.value = raw.map(r => ({
       id: r.id ?? r._id ?? String(Math.random()),
       type: r.type ?? 'song',

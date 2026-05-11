@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import NavBar from '@/components/common/NavBar.vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
@@ -10,12 +10,38 @@ import { LineChart, RadarChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { insightsApi } from '@/api/insights'
+import html2canvas from 'html2canvas'
 
 use([LineChart, RadarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
 const period = ref('7天')
 const loading = ref(true)
 const error = ref<string | null>(null)
+const contentRef = ref<HTMLElement | null>(null)
+
+async function handleShare() {
+  const el = contentRef.value
+  if (!el) return
+  try {
+    const canvas = await html2canvas(el, {
+      backgroundColor: '#f4efe6',
+      scale: 2,
+      useCORS: true,
+    })
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) return
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `moodfm-insights-${period.value}.png`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    console.error('Share image generation failed:', e)
+  }
+}
 
 // Reactive data — populated from API; fallback values shown until loaded
 const statCards = ref([
@@ -35,6 +61,13 @@ const artists = ref([
 
 const pastWeeks = ref(['焦灼的尝试', '缓慢上升', '潮湿但安静', '久违的明亮'])
 const pastMoods = ref(['energetic', 'focused', 'melancholy', 'dusk'])
+
+const headline = ref('tender')
+const headlineAlt = ref('awake')
+const headlineCn = ref('温柔的清醒')
+const essayBody = ref('')
+const weeklyReportId = ref<number | null>(null)
+const previousReports = ref<Array<{ id: number; week: number; year: number; title: string; mood: string }>>([])
 
 // Chart data refs (fallback = 30-day mock)
 const trendDates = ref(Array.from({ length: 30 }, (_, i) => {
@@ -143,55 +176,73 @@ const radarOption = computed(() => ({
 
 const days = computed(() => period.value === '7天' ? 7 : period.value === '30天' ? 30 : 90)
 
-onMounted(async () => {
+async function fetchInsights() {
+  loading.value = true
   try {
     const d = days.value
     const [trend, radar, topItems, summary] = await Promise.all([
-      insightsApi.getMoodTrend(d).catch(() => [] as any[]),
+      insightsApi.getMoodTrend(d).catch(() => null as any),
       insightsApi.getGenreRadar(d).catch(() => [] as any[]),
       insightsApi.getTopItems(d).catch(() => null as any),
       insightsApi.getSummary(d).catch(() => null as any),
     ])
 
-    if (trend.length > 0) {
-      trendDates.value = trend.map((t: any) => {
-        const dt = new Date(t.date); return `${dt.getMonth() + 1}/${dt.getDate()}`
-      })
-      trendMood.value = trend.map((t: any) => t.score)
-      trendSong.value = trend.map((t: any) => Math.max(0, t.score - 0.3 + Math.random() * 0.6))
+    // MoodTrendVO: { labels, userMood, songMood }
+    if (trend?.labels?.length) {
+      trendDates.value = trend.labels
+      trendMood.value = trend.userMood
+      trendSong.value = trend.songMood
     }
 
+    // GenreRadarItemVO[]: { genre, value(0-1) }
     if (radar.length > 0) {
-      const maxVal = Math.max(...radar.map((r: any) => r.value), 1)
       const map: Record<string, number> = {}
       for (const r of radar) {
         const key = GENRE_KEY[(r.genre as string).toLowerCase()] ?? r.genre
-        map[key] = Math.round((r.value / maxVal) * 100)
+        map[key] = Math.round(r.value * 100)
       }
       genreValues.value = RADAR_AXES.map(a => map[a] ?? 0)
     }
 
+    // TopItemsVO: { artists: [{ name, tag, totalTime, proportion }] }
     if (topItems?.artists?.length) {
-      const maxCount = Math.max(...topItems.artists.map((a: any) => a.playCount), 1)
       artists.value = topItems.artists.slice(0, 5).map((a: any) => ({
         n: a.name,
-        en: 'ARTIST',
-        t: formatPlayCount(a.playCount),
-        p: a.playCount / maxCount,
+        en: a.tag || 'ARTIST',
+        t: a.totalTime || '—',
+        p: a.proportion ?? 0,
       }))
     }
 
+    // InsightsSummaryVO: { headline, headlineAlt, headlineCn, stats, aiSummary, previousReports, essayBody }
     if (summary) {
-      statCards.value[0].value = formatMinutes(summary.totalMinutes ?? 0)
-      statCards.value[0].sub = `${summary.totalSongs ?? 0} 首`
-      statCards.value[1].value = summary.topGenre || '—'
-      statCards.value[3].value = summary.topMood || '—'
+      headline.value = summary.headline || 'tender'
+      headlineAlt.value = summary.headlineAlt || 'awake'
+      headlineCn.value = summary.headlineCn || '温柔的清醒'
+      essayBody.value = summary.essayBody || ''
+      weeklyReportId.value = summary.weeklyReportId ?? null
+      previousReports.value = summary.previousReports || []
+
+      const s = summary.stats
+      if (s) {
+        statCards.value[0].value = s.totalListeningTime || '—'
+        statCards.value[0].sub = s.weekLabel || '—'
+        statCards.value[1].value = s.topGenre || '—'
+        statCards.value[1].sub = s.topGenreRatio ? `${s.topGenreRatio} 占比` : '—'
+        statCards.value[2].value = s.aiAccuracy || '—'
+        statCards.value[3].value = s.moodKey || '—'
+        statCards.value[3].sub = s.moodSub || '—'
+      }
     }
   } catch {
   } finally {
     loading.value = false
   }
-})
+}
+
+watch(period, () => { fetchInsights() })
+
+onMounted(() => { fetchInsights() })
 </script>
 
 <template>
@@ -216,16 +267,16 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div style="padding:40px 56px;">
+    <div ref="contentRef" style="padding:40px 56px;">
       <div class="meta">YOUR EMOTIONAL ATLAS · 个人情绪图鉴 · WEEK 18 / 2026</div>
       <h1 class="display" style="font-size:144px;margin:12px 0 0;">You felt</h1>
       <h1 class="display" style="font-size:144px;margin:0;color:var(--ink-3);">
-        <em :style="{ background:'linear-gradient(120deg,var(--mood-a),var(--mood-b),var(--mood-c))',WebkitBackgroundClip:'text',color:'transparent' }">tender</em>
+        <em :style="{ background:'linear-gradient(120deg,var(--mood-a),var(--mood-b),var(--mood-c))',WebkitBackgroundClip:'text',color:'transparent' }">{{ headline }}</em>
         <span style="color:var(--ink);"> &amp; </span>
-        <em :style="{ background:'linear-gradient(120deg,var(--mood-c),var(--mood-d))',WebkitBackgroundClip:'text',color:'transparent' }">awake</em>.
+        <em :style="{ background:'linear-gradient(120deg,var(--mood-c),var(--mood-d))',WebkitBackgroundClip:'text',color:'transparent' }">{{ headlineAlt }}</em>.
       </h1>
       <div class="display-cn" style="font-size:32px;margin-top:16px;color:var(--ink-2);">
-        这一周，你的心情主旋律是<span style="color:var(--ink);">「温柔的清醒」</span>。
+        这一周，你的心情主旋律是<span style="color:var(--ink);">「{{ headlineCn }}」</span>。
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-top:40px;
@@ -301,15 +352,17 @@ onMounted(async () => {
         <div style="position:relative;">
           <div class="mono" style="font-size:10px;letter-spacing:.2em;opacity:.85;">AI · WEEKLY ESSAY · 周报节选</div>
           <h2 class="display" style="font-size:60px;margin:12px 0 16px;text-shadow:0 2px 30px rgba(0,0,0,.2);">
-            "Tender, but never sleepy."
+            "{{ headline }}, but never {{ headlineAlt }}."
           </h2>
-          <p :style="{ fontFamily:'var(--serif-cn)',fontSize:'18px',lineHeight:1.7,maxWidth:'720px' }">
-            这一周你听了 14 小时音乐，其中三个晚上都进入了深夜电台。环境与古典占了一半以上，你跳过的几乎都是带有强人声的曲目——
-            你需要一种<em style="color:var(--mood-a);font-style:normal;">不打扰你思考的陪伴</em>。
+          <p v-if="essayBody" :style="{ fontFamily:'var(--serif-cn)',fontSize:'18px',lineHeight:1.7,maxWidth:'720px' }">
+            {{ essayBody }}
+          </p>
+          <p v-else :style="{ fontFamily:'var(--serif-cn)',fontSize:'18px',lineHeight:1.7,maxWidth:'720px' }">
+            继续使用后，AI 将为你生成专属周报。
           </p>
           <div class="row" style="margin-top:24px;gap:10px;">
             <RouterLink to="/insights/weekly" class="btn" style="background:#fff;color:var(--ink);border-color:#fff;text-decoration:none;">查看完整周报 →</RouterLink>
-            <button class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.4);">生成分享长图</button>
+            <button class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.4);" @click="handleShare">生成分享长图</button>
           </div>
         </div>
       </div>
@@ -319,14 +372,14 @@ onMounted(async () => {
         <div class="display-cn" style="font-size:30px;margin-top:4px;margin-bottom:20px;">过往周报</div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;">
           <div
-            v-for="(t,i) in pastWeeks"
-            :key="i"
-            :data-mood="pastMoods[i]"
+            v-for="r in (previousReports.length ? previousReports : pastWeeks.map((t, i) => ({ id: i, week: 17 - i, year: 2026, title: t, mood: pastMoods[i] })))"
+            :key="r.id ?? r.title"
+            :data-mood="r.mood"
             style="padding:14px;border:1px solid var(--rule);border-radius:16px;background:var(--paper);cursor:pointer;"
           >
             <MoodBlob :size="240" :drift="false" geometry="blob" style="margin-bottom:12px;" />
-            <div class="meta">WEEK {{ 17-i }} · 2026</div>
-            <div :style="{ fontFamily:'var(--serif-cn)',fontSize:'17px',fontWeight:500,marginTop:'4px' }">{{ t }}</div>
+            <div class="meta">WEEK {{ r.week }} · {{ r.year }}</div>
+            <div :style="{ fontFamily:'var(--serif-cn)',fontSize:'17px',fontWeight:500,marginTop:'4px' }">{{ r.title }}</div>
           </div>
         </div>
       </div>

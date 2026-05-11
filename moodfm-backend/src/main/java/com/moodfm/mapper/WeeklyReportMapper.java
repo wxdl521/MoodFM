@@ -2,6 +2,7 @@ package com.moodfm.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.moodfm.domain.entity.WeeklyReport;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -25,4 +26,7 @@ public interface WeeklyReportMapper extends BaseMapper<WeeklyReport> {
         WHERE user_id = #{userId} AND week_start = #{weekStart}
         """)
     WeeklyReport selectByUserIdAndWeekStart(@Param("userId") Long userId, @Param("weekStart") String weekStart);
+
+    @Delete("DELETE FROM weekly_reports WHERE user_id = #{userId}")
+    void deleteByUserId(@Param("userId") Long userId);
 }

@@ -3,6 +3,7 @@ package com.moodfm.common.util;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -26,6 +27,20 @@ public class JwtUtil {
 
     @Value("${app.jwt.remember-me-expire-ms}")
     private long rememberMeExpireMs;
+
+    @PostConstruct
+    public void validateSecret() {
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException(
+                    "JWT secret is not configured. Set the JWT_SECRET environment variable " +
+                    "(minimum 32 characters for HMAC-SHA).");
+        }
+        if (secret.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException(
+                    "JWT secret is too short. HMAC-SHA requires at least 32 bytes. " +
+                    "Set a longer JWT_SECRET environment variable.");
+        }
+    }
 
     public String generateAccessToken(Long userId, String username, String role) {
         return buildToken(userId, username, role, accessTokenExpireMs, "access");
@@ -73,6 +88,25 @@ public class JwtUtil {
 
     public boolean isExpired(String token) {
         return parseToken(token).getExpiration().before(new Date());
+    }
+
+    /**
+     * Parse the token once and return all commonly needed claims in one call,
+     * avoiding redundant cryptographic verification.
+     */
+    public ParsedToken parseAll(String token) {
+        Claims claims = parseToken(token);
+        return new ParsedToken(
+                claims.getId(),
+                Long.parseLong(claims.getSubject()),
+                claims.get("type", String.class),
+                claims.getExpiration()
+        );
+    }
+
+    public record ParsedToken(String jti, Long userId, String type, Date expiration) {
+        public boolean isAccessToken() { return "access".equals(type); }
+        public boolean isExpired() { return expiration.before(new Date()); }
     }
 
     private SecretKey getKey() {

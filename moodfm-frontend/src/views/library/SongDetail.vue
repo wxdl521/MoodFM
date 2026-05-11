@@ -62,6 +62,9 @@
                 ▶ 播放
               </button>
               <button class="btn-pill" style="height: 48px;" @click="addToQueue">+ 队列</button>
+              <button class="btn-pill" style="height: 48px;" @click="startRadioFromSong" :disabled="radioLoading">
+                {{ radioLoading ? '生成中...' : '基于这首歌生成电台' }}
+              </button>
               <button
                 class="btn-pill like-btn"
                 :class="{ active: liked }"
@@ -106,22 +109,27 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import { songApi } from '@/api/song'
 import { blacklistApi } from '@/api/blacklist'
 import { playlistApi } from '@/api/playlist'
+import { radioApi } from '@/api/radio'
 import { usePlayerStore } from '@/stores/player'
+import { useRadioStore } from '@/stores/radio'
 import type { Song } from '@/types'
 
 const route = useRoute()
+const router = useRouter()
 const player = usePlayerStore()
+const radio = useRadioStore()
 
 const song = ref<Song | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 const liked = ref(false)
+const radioLoading = ref(false)
 
 const coverSize = window.innerWidth < 768 ? 220 : 300
 
@@ -142,7 +150,7 @@ function formatDuration(secs: number) {
 function playSong() {
   if (!song.value) return
   player.setSong(song.value)
-  if (!player.isPlaying) player.togglePlay()
+  router.push('/player')
 }
 
 function addToQueue() {
@@ -156,6 +164,26 @@ async function toggleLike() {
     await playlistApi.toggleLike(song.value.id)
     liked.value = !liked.value
   } catch {}
+}
+
+async function startRadioFromSong() {
+  if (!song.value) return
+  radioLoading.value = true
+  try {
+    const res = await radioApi.startFromSong(song.value.id)
+    radio.setMoodText(res.moodSummary || '基于歌曲电台')
+    player.setSessionId(res.sessionId)
+    if (res.songs && res.songs.length > 0) {
+      const [first, ...rest] = res.songs
+      player.setSong(first)
+      player.setQueue(rest)
+    }
+    router.push('/player')
+  } catch (e: any) {
+    error.value = e?.message ?? '生成电台失败'
+  } finally {
+    radioLoading.value = false
+  }
 }
 
 async function addToBlacklist() {
@@ -173,7 +201,7 @@ onMounted(async () => {
   const id = route.params.id as string
   try {
     const res = await songApi.get(id)
-    song.value = res.data
+    song.value = res
   } catch (e: any) {
     error.value = e?.message ?? '未知错误'
   } finally {

@@ -41,20 +41,27 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         String token = header.substring(7);
         try {
-            if (!jwtUtil.isAccessToken(token)) {
+            // Parse the JWT once and extract all claims from the single result
+            JwtUtil.ParsedToken parsed = jwtUtil.parseAll(token);
+
+            if (!parsed.isAccessToken()) {
                 chain.doFilter(request, response);
                 return;
             }
 
-            String jti = jwtUtil.getJti(token);
-            String blacklistKey = RedisKeys.format(RedisKeys.JWT_BLACKLIST, jti);
+            String blacklistKey = RedisKeys.format(RedisKeys.JWT_BLACKLIST, parsed.jti());
             if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(blacklistKey))) {
                 chain.doFilter(request, response);
                 return;
             }
 
-            Long userId = jwtUtil.getUserId(token);
-            UserDetails userDetails = userDetailsService.loadUserByUsername(String.valueOf(userId));
+            UserDetails userDetails = userDetailsService.loadUserByUsername(String.valueOf(parsed.userId()));
+
+            // Reject soft-deleted or locked users (issue #11)
+            if (!userDetails.isEnabled() || !userDetails.isAccountNonLocked()) {
+                chain.doFilter(request, response);
+                return;
+            }
 
             UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
                     userDetails, null, userDetails.getAuthorities()
@@ -63,6 +70,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             SecurityContextHolder.getContext().setAuthentication(auth);
         } catch (JwtException e) {
             log.debug("Invalid JWT token: {}", e.getMessage());
+        } catch (Exception e) {
+            // UsernameNotFoundException (soft-deleted/disabled account) or other runtime errors
+            // — do not set authentication; let Spring Security reject as anonymous
+            log.debug("JWT auth failed: {}", e.getMessage());
         }
 
         chain.doFilter(request, response);

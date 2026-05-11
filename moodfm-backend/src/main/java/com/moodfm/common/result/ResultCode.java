@@ -19,6 +19,13 @@ public enum ResultCode {
     ACCOUNT_LOCKED(1004, "账号已被锁定，请15分钟后再试"),
     ACCOUNT_DISABLED(1005, "账号已注销"),
 
+    // 验证码错误码 (11xx)
+    INVALID_SMS_CODE(1101, "短信验证码错误或已过期"),
+    INVALID_EMAIL_CODE(1102, "邮箱验证码错误或已过期"),
+    PHONE_NOT_VERIFIED(1103, "手机号未验证"),
+    EMAIL_NOT_VERIFIED(1104, "邮箱未验证"),
+    OTP_TOO_MANY_ATTEMPTS(1105, "验证码尝试次数过多，请重新获取"),
+
     // 平台绑定错误码 (2xxx)
     PLATFORM_NOT_BOUND(2001, "音乐平台账号未绑定"),
     PLATFORM_COOKIE_INVALID(2002, "平台账号 Cookie 已失效，请重新绑定"),

@@ -14,6 +14,8 @@ import com.moodfm.mapper.PlatformBindingMapper;
 import com.moodfm.service.platform.PlatformBindingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -49,6 +51,7 @@ public class PlatformBindingServiceImpl implements PlatformBindingService {
     }
 
     @Override
+    @CacheEvict(value = "platformMappings", key = "#userId")
     public Map<String, Object> checkQrStatus(Long userId, String platform, String key) {
         JsonNode status = musicApiClient.checkQrStatus(platform, key);
         int code = status.path("code").asInt();
@@ -87,11 +90,13 @@ public class PlatformBindingServiceImpl implements PlatformBindingService {
     }
 
     @Override
+    @CacheEvict(value = "platformMappings", key = "#userId")
     public void bindByCookie(Long userId, String platform, String cookie) {
         saveBinding(userId, platform, cookie, null);
     }
 
     @Override
+    @CacheEvict(value = "platformMappings", key = "#userId")
     public void unbind(Long userId, String platform) {
         bindingMapper.delete(new LambdaQueryWrapper<PlatformBinding>()
                 .eq(PlatformBinding::getUserId, userId)
@@ -118,6 +123,7 @@ public class PlatformBindingServiceImpl implements PlatformBindingService {
     }
 
     @Override
+    @Cacheable(value = "platformMappings", key = "#userId")
     public PlatformBinding getDefaultBinding(Long userId) {
         PlatformBinding binding = bindingMapper.selectOne(new LambdaQueryWrapper<PlatformBinding>()
                 .eq(PlatformBinding::getUserId, userId)
@@ -135,6 +141,14 @@ public class PlatformBindingServiceImpl implements PlatformBindingService {
     }
 
     @Override
+    public List<PlatformBinding> listAllValidBindings(Long userId) {
+        return bindingMapper.selectList(new LambdaQueryWrapper<PlatformBinding>()
+                .eq(PlatformBinding::getUserId, userId)
+                .eq(PlatformBinding::getIsValid, 1));
+    }
+
+    @Override
+    @CacheEvict(value = "platformMappings", key = "#userId")
     public void setDefault(Long userId, String platform) {
         bindingMapper.update(new LambdaUpdateWrapper<PlatformBinding>()
                 .eq(PlatformBinding::getUserId, userId)

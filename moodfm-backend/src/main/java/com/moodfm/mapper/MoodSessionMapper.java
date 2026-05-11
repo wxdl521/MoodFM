@@ -2,6 +2,7 @@ package com.moodfm.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.moodfm.domain.entity.MoodSession;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -43,6 +44,21 @@ public interface MoodSessionMapper extends BaseMapper<MoodSession> {
             @Param("days")   int days);
 
     @Select("""
+        SELECT DATE(started_at) AS date,
+               mood_params      AS moodParams
+        FROM mood_sessions
+        WHERE user_id = #{userId}
+          AND started_at >= #{weekStart}
+          AND started_at <  #{weekEnd}
+          AND mood_params IS NOT NULL
+        ORDER BY started_at
+        """)
+    List<Map<String, Object>> selectRecentMoodParamsByDateRange(
+            @Param("userId")    Long userId,
+            @Param("weekStart") String weekStart,
+            @Param("weekEnd")   String weekEnd);
+
+    @Select("""
         SELECT mood_params AS moodParams
         FROM mood_sessions
         WHERE user_id = #{userId}
@@ -64,4 +80,7 @@ public interface MoodSessionMapper extends BaseMapper<MoodSession> {
     List<Map<String, Object>> selectRecentSessions(
             @Param("userId") Long userId,
             @Param("limit")  int limit);
+
+    @Delete("DELETE FROM mood_sessions WHERE user_id = #{userId}")
+    void deleteByUserId(@Param("userId") Long userId);
 }

@@ -3,6 +3,7 @@ package com.moodfm.client.music;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +22,13 @@ public class MusicApiClient {
 
     private final ObjectMapper objectMapper;
 
+    private RestClient restClient;
+
+    @PostConstruct
+    void init() {
+        this.restClient = RestClient.builder().baseUrl(adapterUrl).build();
+    }
+
     /** 平台名转小写，匹配 adapter 路由（NETEASE → netease） */
     private String route(String platform) {
         return platform.toLowerCase();
@@ -31,9 +39,9 @@ public class MusicApiClient {
     @CircuitBreaker(name = "music-adapter", fallbackMethod = "fallbackQrKey")
     public String generateQrKey(String platform) {
         try {
-            String json = RestClient.create()
+            String json = restClient
                     .get()
-                    .uri(adapterUrl + "/{p}/qr/key", route(platform))
+                    .uri("/{p}/qr/key", route(platform))
                     .retrieve()
                     .body(String.class);
             return objectMapper.readTree(json).path("data").path("unikey").asText();
@@ -46,9 +54,9 @@ public class MusicApiClient {
     @CircuitBreaker(name = "music-adapter", fallbackMethod = "fallbackQrImage")
     public Map<String, String> createQrCode(String platform, String key) {
         try {
-            String json = RestClient.create()
+            String json = restClient
                     .get()
-                    .uri(adapterUrl + "/{p}/qr/create?key={key}", route(platform), key)
+                    .uri("/{p}/qr/create?key={key}", route(platform), key)
                     .retrieve()
                     .body(String.class);
             JsonNode node = objectMapper.readTree(json).path("data");
@@ -65,9 +73,9 @@ public class MusicApiClient {
     @CircuitBreaker(name = "music-adapter")
     public JsonNode checkQrStatus(String platform, String key) {
         try {
-            String json = RestClient.create()
+            String json = restClient
                     .get()
-                    .uri(adapterUrl + "/{p}/qr/check?key={key}", route(platform), key)
+                    .uri("/{p}/qr/check?key={key}", route(platform), key)
                     .retrieve()
                     .body(String.class);
             return objectMapper.readTree(json);
@@ -82,9 +90,9 @@ public class MusicApiClient {
     @CircuitBreaker(name = "music-adapter", fallbackMethod = "fallbackSongs")
     public JsonNode getUserLikedSongs(String platform, String cookie) {
         try {
-            String json = RestClient.create()
+            String json = restClient
                     .get()
-                    .uri(adapterUrl + "/{p}/user/liked-songs", route(platform))
+                    .uri("/{p}/user/liked-songs", route(platform))
                     .header("X-Cookie", cookie)
                     .retrieve()
                     .body(String.class);
@@ -98,9 +106,9 @@ public class MusicApiClient {
     @CircuitBreaker(name = "music-adapter", fallbackMethod = "fallbackSongs")
     public JsonNode getRecommendSongs(String platform, String cookie) {
         try {
-            String json = RestClient.create()
+            String json = restClient
                     .get()
-                    .uri(adapterUrl + "/{p}/recommend/songs", route(platform))
+                    .uri("/{p}/recommend/songs", route(platform))
                     .header("X-Cookie", cookie)
                     .retrieve()
                     .body(String.class);
@@ -114,9 +122,9 @@ public class MusicApiClient {
     @CircuitBreaker(name = "music-adapter", fallbackMethod = "fallbackSongs")
     public JsonNode searchSongs(String platform, String keywords, int limit) {
         try {
-            String json = RestClient.create()
+            String json = restClient
                     .get()
-                    .uri(adapterUrl + "/{p}/search?keywords={kw}&limit={limit}", route(platform), keywords, limit)
+                    .uri("/{p}/search?keywords={kw}&limit={limit}", route(platform), keywords, limit)
                     .retrieve()
                     .body(String.class);
             return objectMapper.readTree(json);
@@ -129,9 +137,9 @@ public class MusicApiClient {
     @CircuitBreaker(name = "music-adapter")
     public String getSongUrl(String platform, String songId, String cookie) {
         try {
-            String json = RestClient.create()
+            String json = restClient
                     .get()
-                    .uri(adapterUrl + "/{p}/song/url?id={id}", route(platform), songId)
+                    .uri("/{p}/song/url?id={id}", route(platform), songId)
                     .header("X-Cookie", cookie)
                     .retrieve()
                     .body(String.class);
@@ -146,9 +154,9 @@ public class MusicApiClient {
     @CircuitBreaker(name = "music-adapter", fallbackMethod = "fallbackNode")
     public JsonNode getUserPlaylists(String platform, String cookie) {
         try {
-            String json = RestClient.create()
+            String json = restClient
                     .get()
-                    .uri(adapterUrl + "/{p}/user/playlists", route(platform))
+                    .uri("/{p}/user/playlists", route(platform))
                     .header("X-Cookie", cookie)
                     .retrieve()
                     .body(String.class);
@@ -163,9 +171,9 @@ public class MusicApiClient {
     @CircuitBreaker(name = "music-adapter", fallbackMethod = "fallbackNode")
     public JsonNode getPlaylistTracks(String platform, String playlistId, String cookie) {
         try {
-            String json = RestClient.create()
+            String json = restClient
                     .get()
-                    .uri(adapterUrl + "/{p}/playlist/tracks?id={id}", route(platform), playlistId)
+                    .uri("/{p}/playlist/tracks?id={id}", route(platform), playlistId)
                     .header("X-Cookie", cookie)
                     .retrieve()
                     .body(String.class);

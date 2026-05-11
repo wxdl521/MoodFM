@@ -9,6 +9,7 @@ export interface User {
   username: string
   email: string
   avatarUrl?: string
+  role?: string
 }
 
 export interface UserPreferences {
@@ -30,6 +31,7 @@ export interface Song {
   audioUrl?: string
   bpm?: number
   tags?: string[]
+  recommendReason?: string
 }
 
 export interface RadioSession {

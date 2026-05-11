@@ -14,6 +14,6 @@ interface HistoryParams {
 interface HistoryListResponse { items: PlayHistory[]; total: number; page: number; pageSize: number }
 
 export const historyApi = {
-  // params: { page?, pageSize?, scene?, startDate?, endDate? }
   list: (params?: HistoryParams): Promise<HistoryListResponse> => api.get('/history', { params }),
+  clear: (): Promise<void> => api.delete('/history/all'),
 };

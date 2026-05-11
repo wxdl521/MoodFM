@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import MoodBlob from '@/components/common/MoodBlob.vue'
-import { playlistApi } from '@/api/playlist'
+import { playlistApi, type SmartPlaylistSummary } from '@/api/playlist'
 
 const router = useRouter()
 const tab = ref('我的')
@@ -12,6 +12,14 @@ const error = ref<string | null>(null)
 interface PlaylistItem { id: string; t: string; en: string; n: number; m: number; src: string; mood: string; desc: string; ai: boolean }
 
 const lists = ref<PlaylistItem[]>([])
+const smartPlaylists = ref<SmartPlaylistSummary[]>([])
+
+const iconMap: Record<string, string> = {
+  heart: 'heart',
+  moon: 'moon',
+  zap: 'zap',
+  compass: 'compass',
+}
 
 function toPlatformLabel(p: string): string {
   return p === 'netease' ? '网易云' : p === 'qqmusic' ? 'QQ' : p
@@ -19,8 +27,11 @@ function toPlatformLabel(p: string): string {
 
 onMounted(async () => {
   try {
-    const data = await playlistApi.list()
-    lists.value = data.map(pl => ({
+    const [playlistData, smartData] = await Promise.all([
+      playlistApi.list(),
+      playlistApi.listSmart().catch(() => []),
+    ])
+    lists.value = playlistData.map(pl => ({
       id: pl.id,
       t: pl.name,
       en: pl.name.toUpperCase().slice(0, 16),
@@ -31,6 +42,7 @@ onMounted(async () => {
       desc: pl.description ?? '',
       ai: false,
     }))
+    smartPlaylists.value = smartData
   } catch (e: any) {
     error.value = e?.message ?? '加载失败'
   } finally {
@@ -49,7 +61,6 @@ onMounted(async () => {
     </div>
 
     <div style="padding:40px 56px;">
-      <div class="meta">YOUR LIBRARY · {{ lists.length }} 个歌单</div>
       <h1 class="display" style="font-size:120px;margin:10px 0 8px;">Your <em>library</em>.</h1>
       <div class="display-cn" style="font-size:28px;color:var(--ink-2);margin-bottom:24px;">跨平台合并 · 一处看完</div>
 
@@ -73,6 +84,32 @@ onMounted(async () => {
         >{{ t }}</button>
       </div>
 
+      <!-- Smart Playlists -->
+      <div v-if="smartPlaylists.length" style="margin-bottom:36px;">
+        <div class="meta" style="margin-bottom:14px;">SMART · 智能歌单</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;">
+          <div
+            v-for="sp in smartPlaylists"
+            :key="sp.type"
+            style="cursor:pointer;padding:20px;border:1px solid var(--rule);border-radius:12px;
+                   transition:border-color .2s,box-shadow .2s;"
+            @mouseover="($event.currentTarget as HTMLElement).style.borderColor='var(--ink)'"
+            @mouseleave="($event.currentTarget as HTMLElement).style.borderColor='var(--rule)'"
+            @click="router.push('/playlists/smart/' + sp.type)"
+          >
+            <div style="font-size:28px;margin-bottom:8px;">
+              <span v-if="sp.icon === 'heart'">&#10084;</span>
+              <span v-else-if="sp.icon === 'moon'">&#9790;</span>
+              <span v-else-if="sp.icon === 'zap'">&#9889;</span>
+              <span v-else-if="sp.icon === 'compass'">&#9788;</span>
+            </div>
+            <div style="font-family:var(--serif-cn);font-size:18px;font-weight:500;">{{ sp.name }}</div>
+            <div class="meta" style="margin-top:4px;color:var(--ink-3);">{{ sp.songCount }} 首</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="meta" style="margin-bottom:14px;">YOUR LIBRARY · {{ lists.length }} 个歌单</div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;">
         <div
           v-for="(l, i) in lists"

@@ -23,4 +23,7 @@ public class RegisterRequest {
     @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\\d).{8,}$",
             message = "密码至少 8 位，需包含字母和数字")
     private String password;
+
+    /** 手机验证码（若提供了手机号则必填） */
+    private String phoneCode;
 }

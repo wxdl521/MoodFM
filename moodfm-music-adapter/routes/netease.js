@@ -109,6 +109,21 @@ router.get('/search', async (req, res) => {
   }
 })
 
+// 红心/取消红心歌曲 (like=1 红心, like=0 取消)
+router.get('/song/like', async (req, res) => {
+  try {
+    const { id, like = '1' } = req.query
+    const cookie = getCookie(req)
+    if (!id) return res.status(400).json({ error: 'id is required' })
+    if (!cookie) return res.status(401).json({ error: 'cookie required' })
+    const result = await getApi().like({ id, like: parseInt(like), cookie })
+    res.json({ code: 200, data: result.body })
+  } catch (e) {
+    console.error('song/like error:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 // 获取歌曲播放 URL
 router.get('/song/url', async (req, res) => {
   try {
@@ -129,6 +144,32 @@ router.get('/lyric', async (req, res) => {
     if (!id) return res.status(400).json({ error: 'id is required' })
     const result = await getApi().lyric({ id })
     res.json({ code: 200, lrc: result.body.lrc, tlyric: result.body.tlyric })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// 获取歌曲详情
+router.get('/song/detail', async (req, res) => {
+  try {
+    const { ids } = req.query
+    if (!ids) return res.status(400).json({ error: 'ids is required' })
+    const cookie = getCookie(req)
+    const result = await getApi().song_detail({ ids, cookie })
+    res.json({ code: 200, songs: result.body.songs || [], privileges: result.body.privileges || [] })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// 获取相似歌曲
+router.get('/simi/song', async (req, res) => {
+  try {
+    const { id } = req.query
+    if (!id) return res.status(400).json({ error: 'id is required' })
+    const cookie = getCookie(req)
+    const result = await getApi().simi_song({ id, cookie })
+    res.json({ code: 200, songs: result.body.songs || [] })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }

@@ -16,15 +16,15 @@
       加载失败 · {{ error }}
     </div>
 
-    <div v-else>
+    <div v-else ref="reportRef">
       <div class="hero-section">
         <div class="mood-blob drift" style="width: 700px; height: 700px; right: -200px; top: -200px; opacity: 0.45; pointer-events: none;" />
         <div style="position: relative; z-index: 2; max-width: 920px;">
           <div class="meta">A WEEKLY DISPATCH · WEEK {{ currentWeekLabel }} · {{ weekDateRange }}</div>
-          <h1 class="display hero-h1">A week of</h1>
-          <h1 class="display hero-h1"><em>quiet</em> light.</h1>
+          <h1 class="display hero-h1">{{ heroTitle1 }}</h1>
+          <h1 class="display hero-h1"><em>{{ heroHeadline }}</em> {{ heroHeadline2 }}</h1>
           <div class="display-cn" style="font-size: clamp(24px, 3vw, 48px); margin-top: 24px; color: var(--ink-2);">
-            一周 · 安静、温柔、有一点点蓝。
+            {{ heroTitleCn }}
           </div>
           <p :style="{ marginTop: '28px', fontSize: 'clamp(14px, 1.2vw, 18px)', lineHeight: 1.7, color: 'var(--ink-2)', maxWidth: '640px', fontFamily: 'var(--serif-cn)' }">
             这一周你听了 <strong style="color: var(--ink);">{{ report.totalTracks }} 首歌、{{ report.listenTime }}</strong>。情绪曲线整体偏向"温柔"与"专注"，深夜段出现两次"轻度忧郁"波峰。
@@ -72,8 +72,7 @@
 
       <div class="pullout-section">
         <div class="display" style="font-size: clamp(22px, 3.5vw, 48px); font-style: italic; line-height: 1.3; max-width: 880px; margin: 0 auto;">
-          "你似乎更喜欢在 <em style="background: linear-gradient(180deg, transparent 60%, var(--mood-a) 60%); padding: 0 4px;">23 点之后</em> 听 ambient——
-          也许，那是你对一天最温柔的告别。"
+          "{{ quote || '继续使用后，AI 将为你生成专属金句。' }}"
         </div>
         <div class="meta" style="margin-top: 24px; color: var(--ink-3);">— AI · MOODFM EDITORIAL</div>
       </div>
@@ -146,12 +145,14 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { reportsApi } from '@/api/reports'
+import html2canvas from 'html2canvas'
 
 use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 
 const loading = ref(true)
 const error = ref<string | null>(null)
 const currentWeekId = ref('')
+const reportRef = ref<HTMLElement | null>(null)
 
 const currentWeekLabel = computed(() => currentWeekId.value)
 
@@ -164,9 +165,9 @@ const weekDateRange = computed(() => {
 })
 
 interface Report {
-  totalTracks: number | string
+  totalTracks: string
   listenTime: string
-  newDiscovered: number | string
+  newDiscovered: string
   moodMatch: string
   moodData: number[]
 }
@@ -176,8 +177,15 @@ const report = ref<Report>({
   listenTime: '—',
   newDiscovered: '—',
   moodMatch: '—',
-  moodData: [6.2, 6.5, 4.8, 6.0, 6.7, 7.1, 6.4],
+  moodData: [5, 6, 4, 7, 5, 8, 6],
 })
+
+const heroTitle1 = ref('A week of')
+const heroHeadline = ref('quiet')
+const heroHeadline2 = ref('light.')
+const heroTitleCn = ref('一周 · 安静、温柔、有一点点蓝。')
+const essayBody = ref('')
+const quote = ref('')
 
 const numberStats = computed(() => [
   { n: String(report.value.totalTracks), l: 'TRACKS', cn: '首' },
@@ -248,19 +256,28 @@ function formatDateRange(start: string, end: string): string {
   return `${months[s.getMonth()]} ${String(s.getDate()).padStart(2,'0')} — ${months[e.getMonth()]} ${String(e.getDate()).padStart(2,'0')}`
 }
 
-function applyReport(res: { totalSongs: number; totalMinutes: number; topMood: string; topGenre: string; topSongs: Array<{ id: string; title: string; artist: string; playCount: number }> }) {
+function applyReport(res: any) {
+  heroTitle1.value = res.titleEn1 || 'A week of'
+  heroHeadline.value = res.headlineWord || 'quiet'
+  heroHeadline2.value = res.headlineWord2 || 'light.'
+  heroTitleCn.value = res.titleCn || '一周 · 安静、温柔、有一点点蓝。'
+  essayBody.value = res.essayBody || ''
+  quote.value = res.quote || ''
+
+  const s = res.stats ?? {}
   report.value = {
-    totalTracks: res.totalSongs,
-    listenTime: formatMinutes(res.totalMinutes),
-    newDiscovered: res.topSongs?.length ?? '—',
-    moodMatch: res.topMood ?? '—',
-    moodData: [6.2, 6.5, 4.8, 6.0, 6.7, 7.1, 6.4],
+    totalTracks: s.tracks ?? '—',
+    listenTime: s.listenTime ?? '—',
+    newDiscovered: s.newDiscovered ?? '—',
+    moodMatch: s.moodMatch ?? '—',
+    moodData: res.moodData ?? [5, 6, 4, 7, 5, 8, 6],
   }
-  discoveries.value = (res.topSongs ?? []).slice(0, 4).map(s => ({
-    t: s.title,
-    a: s.artist,
-    g: res.topGenre ?? 'Music',
-    m: res.topMood?.toUpperCase() ?? 'CALM',
+
+  discoveries.value = (res.topDiscoveries ?? []).slice(0, 4).map((d: any) => ({
+    t: d.title,
+    a: d.artist,
+    g: d.genre ?? 'Music',
+    m: (d.mood ?? 'calm').toUpperCase(),
   }))
 }
 
@@ -278,8 +295,28 @@ async function loadWeek(id: string) {
   }
 }
 
-function handleShare() {
-  console.log('generate share image for week', currentWeekId.value)
+async function handleShare() {
+  const el = reportRef.value
+  if (!el) return
+  try {
+    const canvas = await html2canvas(el, {
+      backgroundColor: '#f4efe6',
+      scale: 2,
+      useCORS: true,
+    })
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) return
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `moodfm-weekly-${currentWeekId.value || 'report'}.png`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    console.error('Share image generation failed:', e)
+  }
 }
 
 onMounted(async () => {

@@ -2,6 +2,7 @@ import api from './client';
 
 interface User { id: number; username: string; email: string; avatarUrl?: string }
 interface UserPreferences { theme: 'light' | 'dark'; defaultPlatform: 'netease' | 'qqmusic'; autoPlay: boolean; crossfadeDuration: number }
+interface NotificationSettings { weeklyReport: boolean; cookieExpiry: boolean; newFeatures: boolean; weeklyReportDay?: number; weeklyReportHour?: number }
 
 interface UpdateProfileBody { username?: string; email?: string }
 interface ChangePasswordBody { oldPassword: string; newPassword: string }
@@ -18,7 +19,10 @@ export const userApi = {
   },
   getPreferences:    (): Promise<UserPreferences>                    => api.get('/user/preferences'),
   updatePreferences: (body: Partial<UserPreferences>): Promise<UserPreferences> => api.put('/user/preferences', body),
+  getNotificationSettings:    (): Promise<NotificationSettings>               => api.get('/user/notifications/settings'),
+  updateNotificationSettings: (body: Partial<NotificationSettings>): Promise<void> => api.put('/user/notifications/settings', body),
   getDevices:        (): Promise<Device[]>                           => api.get('/user/devices'),
   revokeDevice:      (id: string): Promise<void>                     => api.delete(`/user/devices/${id}`),
   deleteAccount:     (): Promise<void>                               => api.delete('/user/account'),
+  deleteAllData:     (): Promise<void>                               => api.delete('/user/data/all'),
 };

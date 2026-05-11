@@ -2,11 +2,14 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePlayerStore } from '@/stores/player'
+import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import { playlistApi } from '@/api/playlist'
+import type { Song } from '@/types'
 
 const router = useRouter()
 const player = usePlayerStore()
+const audio = useAudioPlayer()
 const src = ref('全部')
 const loading = ref(true)
 const error = ref<string | null>(null)
@@ -14,6 +17,7 @@ const error = ref<string | null>(null)
 interface SongItem { t: string; a: string; al: string; d: string; src: string; mood: string; when: string }
 
 const songs = ref<SongItem[]>([])
+const fullSongs = ref<Song[]>([])
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60)
@@ -25,9 +29,26 @@ function toPlatformLabel(p: string): string {
   return p === 'netease' ? '网易云' : p === 'qqmusic' ? 'QQ' : p
 }
 
+function playSong(index: number) {
+  const song = fullSongs.value[index]
+  if (!song) return
+  player.setSong(song)
+  if (song.audioUrl) {
+    audio.load(song.audioUrl).then(() => audio.play())
+  }
+  router.push('/player')
+}
+
+function playRandom() {
+  if (fullSongs.value.length === 0) return
+  const idx = Math.floor(Math.random() * fullSongs.value.length)
+  playSong(idx)
+}
+
 onMounted(async () => {
   try {
     const data = await playlistApi.loved()
+    fullSongs.value = data
     songs.value = data.map(s => ({
       t: s.title,
       a: s.artist,
@@ -47,6 +68,12 @@ onMounted(async () => {
 const filtered = computed(() =>
   src.value === '全部' ? songs.value : songs.value.filter(s => s.src === src.value || s.src === '两端均有')
 )
+
+function filteredIndex(displayIndex: number): number {
+  if (src.value === '全部') return displayIndex
+  const song = filtered.value[displayIndex]
+  return songs.value.indexOf(song)
+}
 </script>
 
 <template>
@@ -72,7 +99,7 @@ const filtered = computed(() =>
           <div class="meta" style="margin-top:10px;color:var(--ink-3);">· 网易云 86 · QQ 音乐 22 · 重叠 16</div>
           <hr class="rule" style="margin:16px 0;" />
           <div class="row" style="gap:8px;">
-            <button class="btn" style="flex:1;" @click="player.setPlaying(true);router.push('/player')">随机播放 ▶</button>
+            <button class="btn" style="flex:1;" @click="playRandom">随机播放 ▶</button>
             <button class="btn-pill">导出</button>
           </div>
         </div>
@@ -97,9 +124,9 @@ const filtered = computed(() =>
           :data-mood="s.mood"
           class="row"
           style="gap:14px;padding:14px 4px;border-bottom:1px solid var(--rule);cursor:pointer;"
-          @click="player.setPlaying(true);router.push('/player')"
+          @click="playSong(filteredIndex(i))"
         >
-          <div class="mono" style="font-size:11px;color:var(--ink-3);width:26px;flex-shrink:0;">{{ String(i + 1).padStart(2, '00') }}</div>
+          <div class="mono" style="font-size:11px;color:var(--ink-3);width:26px;flex-shrink:0;">{{ String(i + 1).padStart(2, '0') }}</div>
           <MoodBlob :size="56" :drift="false" geometry="blob" style="flex-shrink:0;" />
           <div style="flex:1;min-width:0;">
             <div class="row" style="gap:8px;align-items:baseline;">

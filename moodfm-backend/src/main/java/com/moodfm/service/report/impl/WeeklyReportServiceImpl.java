@@ -119,12 +119,12 @@ public class WeeklyReportServiceImpl implements WeeklyReportService {
                     .build());
         }
 
-        // Top genre (reuse 7-day query scoped to week range via the new week stats)
-        List<Map<String, Object>> genreRows = playRecordMapper.selectGenreCounts(userId, 7);
+        // Top genre (scoped to the actual week range)
+        List<Map<String, Object>> genreRows = playRecordMapper.selectGenreCountsByDateRange(userId, ws, we);
         String topGenre = genreRows.isEmpty() ? "—" : capitalize(str(genreRows.get(0).get("genre")));
 
-        // Mood from sessions
-        List<Map<String, Object>> sessionRows = moodSessionMapper.selectRecentMoodParams(userId, 7);
+        // Mood from sessions (scoped to the actual week range)
+        List<Map<String, Object>> sessionRows = moodSessionMapper.selectRecentMoodParamsByDateRange(userId, ws, we);
         double avgV = 0.5, avgE = 0.5;
         if (!sessionRows.isEmpty()) {
             avgV = sessionRows.stream()

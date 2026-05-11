@@ -27,6 +27,8 @@ public class User {
 
     private String role; // USER / ADMIN
 
+    private Boolean emailVerified;
+
     private Integer loginFailCount;
 
     private LocalDateTime lockUntil;

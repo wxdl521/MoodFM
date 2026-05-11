@@ -8,7 +8,9 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(
     (() => {
       const raw = localStorage.getItem('moodfm_user')
-      return raw ? JSON.parse(raw) : null
+      let parsed = null
+      try { parsed = raw ? JSON.parse(raw) : null } catch { parsed = null }
+      return parsed
     })()
   )
 
@@ -44,5 +46,14 @@ export const useAuthStore = defineStore('auth', () => {
     return res
   }
 
-  return { token, user, isLoggedIn, login, register, logout, fetchMe }
+  async function validate() {
+    if (!token.value) return
+    try {
+      await fetchMe()
+    } catch {
+      logout()
+    }
+  }
+
+  return { token, user, isLoggedIn, login, register, logout, fetchMe, validate }
 })

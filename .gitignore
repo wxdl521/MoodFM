@@ -37,6 +37,9 @@ Front-end styles/
 .claude/
 *.iml
 
+# Local tools (Maven, etc.)
+.tools/
+
 # OS files
 .DS_Store
 Thumbs.db
@@ -44,3 +47,6 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Build artifacts
+*.tsbuildinfo

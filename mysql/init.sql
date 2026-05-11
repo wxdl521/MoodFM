@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   blacklist_songs JSON,
   blacklist_keywords JSON,
   qdrant_user_vector_id VARCHAR(64),
+  notification_prefs JSON COMMENT '通知偏好 {"weeklyReport":true,"cookieExpiry":true,"newFeatures":true}',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_profile_user FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

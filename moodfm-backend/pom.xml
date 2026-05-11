@@ -131,6 +131,24 @@
             <version>${resilience4j.version}</version>
         </dependency>
 
+        <!-- Qdrant Vector DB Client -->
+        <dependency>
+            <groupId>io.qdrant</groupId>
+            <artifactId>client</artifactId>
+            <version>1.12.0</version>
+        </dependency>
+        <!-- Qdrant client compile-time deps (declared as runtime in its POM) -->
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-protobuf</artifactId>
+            <version>1.65.1</version>
+        </dependency>
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-stub</artifactId>
+            <version>1.65.1</version>
+        </dependency>
+
         <!-- SpringDoc OpenAPI 3 -->
         <dependency>
             <groupId>org.springdoc</groupId>
@@ -154,6 +172,11 @@
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>mockwebserver</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

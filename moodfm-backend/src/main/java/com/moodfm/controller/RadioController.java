@@ -1,9 +1,11 @@
 package com.moodfm.controller;
 
 import com.moodfm.common.result.R;
+import com.moodfm.common.result.ResultCode;
 import com.moodfm.domain.dto.feedback.PlaybackFeedbackDto;
 import com.moodfm.domain.dto.radio.BatchFeedbackRequest;
 import com.moodfm.domain.dto.radio.MoodInputRequest;
+import com.moodfm.domain.dto.radio.SessionDurationRequest;
 import com.moodfm.domain.vo.RadioQueueVO;
 import com.moodfm.domain.vo.SessionSummaryVO;
 import com.moodfm.domain.vo.SongVO;
@@ -51,6 +53,10 @@ public class RadioController {
     @GetMapping("/next")
     public R<List<SongVO>> getNext(@RequestParam Long sessionId,
                                    @AuthenticationPrincipal UserDetails ud) {
+        // 会话时长到期检查
+        if (playerService.isSessionExpired(sessionId)) {
+            return R.fail(410, "电台会话已结束，请重新开始");
+        }
         return R.ok(playerService.getNextBatch(uid(ud), sessionId));
     }
 
@@ -62,13 +68,37 @@ public class RadioController {
         return R.ok(playerService.getSongUrl(uid(ud), platform, songId));
     }
 
+    @Operation(summary = "修改当前会话时长")
+    @PutMapping("/session/duration")
+    public R<Void> setSessionDuration(@Valid @RequestBody SessionDurationRequest request,
+                                      @AuthenticationPrincipal UserDetails ud) {
+        playerService.setSessionDuration(request.getSessionId(), request.getMinutes());
+        return R.ok();
+    }
+
+    @Operation(summary = "基于歌曲启动电台")
+    @PostMapping("/start-from-song")
+    public R<RadioQueueVO> startFromSong(@RequestBody Map<String, Long> body,
+                                         @AuthenticationPrincipal UserDetails ud) {
+        Long songId = body.get("songId");
+        if (songId == null) {
+            return R.fail(ResultCode.BAD_REQUEST, "songId 不能为空");
+        }
+        return R.ok(playerService.startRadioFromSong(uid(ud), songId));
+    }
+
     // ── 反馈接口 ──────────────────────────────────────────────────────
 
     @Operation(summary = "单条反馈上报")
     @PostMapping("/feedback")
     public R<Void> feedback(@Valid @RequestBody PlaybackFeedbackDto dto,
                             @AuthenticationPrincipal UserDetails ud) {
-        feedbackService.record(uid(ud), dto);
+        Long userId = uid(ud);
+        feedbackService.record(userId, dto);
+        // Feature 1: 反馈后检查是否需要动态重排
+        if (dto.getSessionId() != null && ("completed".equals(dto.getEventType()) || "skip".equals(dto.getEventType()))) {
+            playerService.reRankIfNeeded(userId, dto.getSessionId());
+        }
         return R.ok();
     }
 
@@ -77,10 +107,20 @@ public class RadioController {
     public R<Void> batchFeedback(@Valid @RequestBody BatchFeedbackRequest request,
                                  @AuthenticationPrincipal UserDetails ud) {
         Long userId = uid(ud);
+        Long lastSessionId = null;
+        boolean hasPlaybackEvent = false;
         for (PlaybackFeedbackDto dto : request.getEvents()) {
             if (dto.getSessionId() != null && dto.getSongId() != null) {
                 feedbackService.record(userId, dto);
+                lastSessionId = dto.getSessionId();
+                if ("completed".equals(dto.getEventType()) || "skip".equals(dto.getEventType())) {
+                    hasPlaybackEvent = true;
+                }
             }
+        }
+        // Feature 1: 批量反馈后检查是否需要动态重排（仅触发一次）
+        if (hasPlaybackEvent && lastSessionId != null) {
+            playerService.reRankIfNeeded(userId, lastSessionId);
         }
         return R.ok();
     }

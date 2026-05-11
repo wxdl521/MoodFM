@@ -69,6 +69,20 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
           </button>
         </div>
+
+        <!-- Session duration selector -->
+        <div class="home-section">
+          <div class="meta" style="margin-bottom: 10px">电台时长 · SESSION DURATION</div>
+          <div class="duration-ctrl">
+            <button
+              v-for="opt in durationOptions"
+              :key="opt.value"
+              class="duration-opt"
+              :class="{ 'duration-opt--active': sessionDuration === opt.value }"
+              @click="sessionDuration = opt.value"
+            >{{ opt.label }}</button>
+          </div>
+        </div>
       </div>
 
       <!-- RIGHT — MoodWheel + Resume + Recommendation -->
@@ -194,8 +208,17 @@ const userName = computed(() => auth.user?.username ?? '旅人')
 // ── Mood input ──────────────────────────────────────────────────────────────
 const moodInput = ref('')
 const selectedScene = ref('')
+const sessionDuration = ref(30)
 
 const scenes = ['通勤', '学习', '跑步', '写作', '睡前', '派对', '深夜', '+ 自定义']
+
+const durationOptions = [
+  { value: 15, label: '15min' },
+  { value: 30, label: '30min' },
+  { value: 60, label: '60min' },
+  { value: 120, label: '120min' },
+  { value: 0, label: '无限' },
+]
 
 function handleSceneSelect(scene: string) {
   if (scene === '+ 自定义') return
@@ -213,7 +236,7 @@ async function handleStartRadio() {
   const text = moodInput.value.trim() || selectedScene.value || '随机'
   radio.setMoodText(text)
   try {
-    await radio.startRadio({ moodText: text, scene: selectedScene.value || undefined })
+    await radio.startRadio({ moodText: text, scene: selectedScene.value || undefined, durationMinutes: sessionDuration.value || undefined })
     router.push('/player')
   } catch {
     // silently fail – backend may not be running in dev
@@ -224,7 +247,7 @@ async function handleStartRadio() {
 async function handleJustPlay() {
   radio.setMoodText('随机')
   try {
-    await radio.startRadio({ moodText: '随机' })
+    await radio.startRadio({ moodText: '随机', durationMinutes: sessionDuration.value || undefined })
   } catch {
     // dev: navigate anyway
   }
@@ -536,5 +559,34 @@ onMounted(async () => {
 .recent-card--placeholder:hover {
   border-color: var(--rule);
   transform: none;
+}
+
+/* ── Duration selector ─────────────────────────────────────────────── */
+.duration-ctrl {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 2px;
+  width: fit-content;
+}
+
+.duration-opt {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.duration-opt--active {
+  background: var(--ink);
+  color: var(--bg);
 }
 </style>

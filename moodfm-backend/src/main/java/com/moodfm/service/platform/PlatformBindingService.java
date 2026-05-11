@@ -22,5 +22,7 @@ public interface PlatformBindingService {
 
     PlatformBinding getDefaultBinding(Long userId);
 
+    List<PlatformBinding> listAllValidBindings(Long userId);
+
     void setDefault(Long userId, String platform);
 }

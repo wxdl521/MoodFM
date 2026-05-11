@@ -2,7 +2,9 @@ package com.moodfm.controller;
 
 import com.moodfm.common.result.R;
 import com.moodfm.domain.entity.WeeklyReport;
+import com.moodfm.domain.vo.AnnualReportVO;
 import com.moodfm.domain.vo.WeeklyReportVO;
+import com.moodfm.service.report.AnnualReportService;
 import com.moodfm.service.report.WeeklyReportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -22,6 +24,7 @@ import java.util.List;
 public class ReportsController {
 
     private final WeeklyReportService weeklyReportService;
+    private final AnnualReportService annualReportService;
 
     @Operation(summary = "获取指定周报")
     @GetMapping("/weekly/{id}")
@@ -48,5 +51,14 @@ public class ReportsController {
         WeeklyReportVO vo = weeklyReportService.generateOrGetCurrentWeek(userId);
         if (vo == null) return R.fail(400, "本周尚无足够收听数据");
         return R.ok(vo);
+    }
+
+    @Operation(summary = "获取年度报告")
+    @GetMapping("/annual/{year}")
+    public R<AnnualReportVO> getAnnualReport(
+            @PathVariable int year,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        Long userId = Long.parseLong(userDetails.getUsername());
+        return R.ok(annualReportService.getAnnualReport(userId, year));
     }
 }

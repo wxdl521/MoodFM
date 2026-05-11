@@ -22,6 +22,12 @@ const year     = ref(now.getFullYear())
 const month    = ref(now.getMonth() + 1)
 const todayDay = now.getDate()
 
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
+const MONTH_CN = ['一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月']
+
+const monthName = computed(() => MONTH_NAMES[month.value - 1])
+const monthNameCn = computed(() => MONTH_CN[month.value - 1])
+
 interface DayCell { day: number; future: boolean; empty: boolean; mood: string; tracks: number; minutes: number; isToday: boolean }
 
 const days     = ref<DayCell[]>([])
@@ -62,7 +68,7 @@ function daysInMonth(y: number, m: number) {
 function buildGrid(apiData: any[]): DayCell[] {
   const total = daysInMonth(year.value, month.value)
   const sameMonth = now.getFullYear() === year.value && now.getMonth() + 1 === month.value
-  const map = new Map<number, any>(apiData.map(d => [new Date(d.date).getDate(), d]))
+  const map = new Map<number, any>(apiData.map((d: any) => [d.day, d]))
   return Array.from({ length: total }, (_, i) => {
     const d = i + 1
     const future = sameMonth ? d > todayDay : (
@@ -70,14 +76,13 @@ function buildGrid(apiData: any[]): DayCell[] {
       (year.value === now.getFullYear() && month.value > now.getMonth() + 1)
     )
     const entry = map.get(d)
-    const hasMood = !!entry?.hasMood
     return {
       day: d,
-      future,
-      empty: future || !hasMood,
+      future: entry?.future ?? future,
+      empty: entry?.empty ?? true,
       mood: entry?.mood ?? 'empty',
-      tracks: entry?.songCount ?? 0,
-      minutes: Math.round((entry?.songCount ?? 0) * 3.5),
+      tracks: entry?.tracks ?? 0,
+      minutes: entry?.minutes ?? 0,
       isToday: sameMonth && d === todayDay,
     }
   })
@@ -87,10 +92,10 @@ async function loadDayDetail(day: number) {
   const dateStr = `${year.value}-${String(month.value).padStart(2,'0')}-${String(day).padStart(2,'0')}`
   try {
     const detail = await insightsApi.getDayDetail(dateStr)
-    topTracks.value = ((detail as any).songs ?? []).slice(0, 4).map((s: any) => ({
-      t: s.title ?? s.name ?? '—',
+    topTracks.value = (detail.topTracks ?? []).slice(0, 4).map(s => ({
+      t: s.title ?? '—',
       a: s.artist ?? '—',
-      m: '—',
+      m: s.durationFormatted ?? `${s.playCount}×`,
     }))
   } catch {
     topTracks.value = []
@@ -114,19 +119,48 @@ function cellBorder(cell: DayCell, isSel: boolean) {
   return '1px solid var(--rule)'
 }
 
-onMounted(async () => {
+async function loadMonth() {
+  loading.value = true
   try {
-    const apiData = await insightsApi.getCalendar(year.value, month.value)
-    days.value = buildGrid(apiData as any[])
-    if (days.value[todayDay - 1] && !days.value[todayDay - 1].empty) {
+    const monthData = await insightsApi.getCalendar(year.value, month.value)
+    days.value = buildGrid(monthData.days ?? [])
+    const sameMonth = now.getFullYear() === year.value && now.getMonth() + 1 === month.value
+    if (sameMonth && days.value[todayDay - 1] && !days.value[todayDay - 1].empty) {
+      selected.value = todayDay
       await loadDayDetail(todayDay)
+    } else {
+      selected.value = 1
+      if (days.value[0] && !days.value[0].empty) await loadDayDetail(1)
+      else topTracks.value = []
     }
   } catch {
     days.value = buildGrid([])
   } finally {
     loading.value = false
   }
-})
+}
+
+function prevMonth() {
+  if (month.value === 1) {
+    month.value = 12
+    year.value--
+  } else {
+    month.value--
+  }
+  loadMonth()
+}
+
+function nextMonth() {
+  if (month.value === 12) {
+    month.value = 1
+    year.value++
+  } else {
+    month.value++
+  }
+  loadMonth()
+}
+
+onMounted(() => { loadMonth() })
 </script>
 
 <template>
@@ -145,14 +179,14 @@ onMounted(async () => {
 
     <div style="display:grid;grid-template-columns:1.4fr 1fr;">
       <div style="padding:40px 56px;border-right:1px solid var(--rule);">
-        <div class="meta">YOUR EMOTIONAL MONTH · 2026</div>
-        <h1 class="display" style="font-size:120px;margin:8px 0 0;line-height:.95;"><em>May.</em></h1>
-        <div class="display-cn" style="font-size:28px;margin-top:4px;color:var(--ink-2);">五月 · 五月让人想睡。</div>
+        <div class="meta">YOUR EMOTIONAL MONTH · {{ year }}</div>
+        <h1 class="display" style="font-size:120px;margin:8px 0 0;line-height:.95;"><em>{{ monthName }}.</em></h1>
+        <div class="display-cn" style="font-size:28px;margin-top:4px;color:var(--ink-2);">{{ monthNameCn }} · {{ monthNameCn }}让人想睡。</div>
 
         <div class="row" style="margin-top:20px;gap:16px;flex-wrap:wrap;">
-          <button class="btn-pill">‹</button>
-          <div class="meta" style="min-width:120px;">MAY 2026 · 五月</div>
-          <button class="btn-pill">›</button>
+          <button class="btn-pill" @click="prevMonth">‹</button>
+          <div class="meta" style="min-width:120px;">{{ monthName.slice(0,3).toUpperCase() }} {{ year }} · {{ monthNameCn }}</div>
+          <button class="btn-pill" @click="nextMonth">›</button>
         </div>
 
         <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-top:22px;">

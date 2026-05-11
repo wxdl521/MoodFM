@@ -29,8 +29,7 @@
 
   cache:
     type: caffeine
-    caffeine:
-      spec: maximumSize=50000,expireAfterWrite=3600s
+    # TTL per cache is configured in CacheConfig.java (users=10min, songs/platformMappings=1h)
 
   ai:
     openai:
@@ -82,6 +81,11 @@ app:
     key: ${COOKIE_ENCRYPTION_KEY:}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:4173}
+
+qdrant:
+  host: ${QDRANT_HOST:localhost}
+  port: ${QDRANT_PORT:6334}
+  use-tls: ${QDRANT_USE_TLS:false}
 
 server:
   port: 8081

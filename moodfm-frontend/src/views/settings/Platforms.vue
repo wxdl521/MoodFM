@@ -15,6 +15,7 @@ interface Binding {
 }
 
 const bindings = ref<Binding[]>([])
+const pendingPlatform = ref<string | null>(null)
 
 const PLATFORMS = [
   { key: 'netease', label: '网易云音乐', icon: '🎵' },
@@ -37,16 +38,22 @@ function getBinding(key: string) {
 }
 
 async function handleSetDefault(key: string) {
+  if (pendingPlatform.value) return
+  pendingPlatform.value = key
   try {
     await platformApi.setDefault(key as 'netease' | 'qqmusic')
     bindings.value = bindings.value.map(b => ({ ...b, isDefault: b.platform === key }))
   } catch (e: any) {
     alert('操作失败：' + (e?.message ?? ''))
+  } finally {
+    pendingPlatform.value = null
   }
 }
 
 async function handleUnbind(key: string) {
+  if (pendingPlatform.value) return
   if (!confirm(`确定解绑 ${key === 'netease' ? '网易云音乐' : 'QQ 音乐'} 吗？历史记录将保留。`)) return
+  pendingPlatform.value = key
   try {
     await platformApi.unbind(key as 'netease' | 'qqmusic')
     bindings.value = bindings.value.map(b =>
@@ -54,6 +61,8 @@ async function handleUnbind(key: string) {
     )
   } catch (e: any) {
     alert('解绑失败：' + (e?.message ?? ''))
+  } finally {
+    pendingPlatform.value = null
   }
 }
 </script>
@@ -113,13 +122,15 @@ async function handleUnbind(key: string) {
                 v-if="!getBinding(p.key)?.isDefault"
                 class="btn-pill"
                 style="flex:1;"
+                :disabled="pendingPlatform === p.key"
                 @click="handleSetDefault(p.key)"
-              >设为默认</button>
+              >{{ pendingPlatform === p.key ? '…' : '设为默认' }}</button>
               <button
                 class="btn-pill"
                 style="flex:1;color:#e05;border-color:#e05;"
+                :disabled="pendingPlatform === p.key"
                 @click="handleUnbind(p.key)"
-              >解绑</button>
+              >{{ pendingPlatform === p.key ? '…' : '解绑' }}</button>
             </template>
             <template v-else>
               <button

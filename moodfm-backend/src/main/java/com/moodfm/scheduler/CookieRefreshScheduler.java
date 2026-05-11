@@ -2,14 +2,18 @@ package com.moodfm.scheduler;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.moodfm.domain.entity.PlatformBinding;
+import com.moodfm.domain.vo.NotificationPrefsVO;
 import com.moodfm.mapper.PlatformBindingMapper;
+import com.moodfm.service.user.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Component
@@ -17,11 +21,9 @@ import java.util.List;
 public class CookieRefreshScheduler {
 
     private final PlatformBindingMapper bindingMapper;
+    private final SimpMessagingTemplate messagingTemplate;
+    private final UserService userService;
 
-    /**
-     * 每 24 小时检查并标记快过期的 Cookie，触发刷新逻辑
-     * 实际刷新实现根据各平台 API 不同，此处仅做日志示例
-     */
     @Scheduled(fixedDelay = 86400000) // 24h
     public void checkCookieExpiry() {
         LocalDateTime threshold = LocalDateTime.now().plusHours(48);
@@ -34,7 +36,23 @@ public class CookieRefreshScheduler {
 
         if (!expiringSoon.isEmpty()) {
             log.info("Found {} platform bindings expiring within 48h", expiringSoon.size());
-            // TODO: 调用平台刷新接口，或通过 WebSocket 通知用户重新绑定
+            for (PlatformBinding binding : expiringSoon) {
+                // 检查用户是否启用了 cookieExpiry 通知
+                try {
+                    NotificationPrefsVO prefs = userService.getNotificationPrefs(binding.getUserId());
+                    if (!prefs.isCookieExpiry()) {
+                        log.debug("User {} has cookieExpiry notification disabled, skipping", binding.getUserId());
+                        continue;
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to check notification prefs for user {}, sending anyway", binding.getUserId(), e);
+                }
+                messagingTemplate.convertAndSend(
+                        "/topic/notify/" + binding.getUserId(),
+                        Map.of("type", "cookie_invalid", "platform", binding.getPlatform())
+                );
+                log.info("Notified user {} about expiring {} cookie", binding.getUserId(), binding.getPlatform());
+            }
         }
     }
 }

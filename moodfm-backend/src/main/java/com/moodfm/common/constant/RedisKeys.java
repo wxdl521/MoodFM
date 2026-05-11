@@ -11,9 +11,18 @@ public final class RedisKeys {
     // 用户
     public static final String LOGIN_FAIL_COUNT = "login:fail:%s";         // username
     public static final String LOGIN_LOCK = "login:lock:%s";               // username
+    public static final String RATE_LIMIT = "ratelimit:%s:%s";             // userId:minute
 
     // Refresh Token
     public static final String REFRESH_TOKEN = "auth:refresh:%s";          // token
+
+    // 短信验证码
+    public static final String SMS_CODE = "sms:code:%s";                   // phone
+    public static final String SMS_ATTEMPTS = "sms:attempts:%s";           // phone
+
+    // 邮箱验证码
+    public static final String EMAIL_VERIFY = "email:verify:%s";           // email
+    public static final String EMAIL_ATTEMPTS = "email:attempts:%s";       // email
 
     // 平台绑定
     public static final String QR_LOGIN_KEY = "qrlogin:key:%s";            // platform:key
@@ -21,6 +30,9 @@ public final class RedisKeys {
 
     // 播放队列
     public static final String USER_QUEUE = "queue:%d";                     // userId
+
+    // 会话时长控制
+    public static final String SESSION_TTL = "session:ttl:%d";              // sessionId
 
     // AI 缓存
     public static final String MOOD_ANALYSIS = "mood:%s";                  // input hash

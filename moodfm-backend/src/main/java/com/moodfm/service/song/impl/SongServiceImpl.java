@@ -4,14 +4,18 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.moodfm.client.music.SongApiClient;
 import com.moodfm.common.util.AesUtil;
+import com.moodfm.common.util.MusicResponseParser;
 import com.moodfm.domain.entity.FeedbackEvent;
 import com.moodfm.domain.entity.PlatformBinding;
+import com.moodfm.domain.entity.PlatformSongMapping;
 import com.moodfm.domain.vo.LyricLineVO;
 import com.moodfm.domain.vo.SongVO;
 import com.moodfm.mapper.FeedbackEventMapper;
+import com.moodfm.mapper.PlatformSongMappingMapper;
 import com.moodfm.service.platform.PlatformBindingService;
 import com.moodfm.service.song.SongService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -28,6 +32,7 @@ public class SongServiceImpl implements SongService {
     private final PlatformBindingService bindingService;
     private final SongApiClient songApiClient;
     private final FeedbackEventMapper feedbackEventMapper;
+    private final PlatformSongMappingMapper platformSongMappingMapper;
     private final AesUtil aesUtil;
 
     @Override
@@ -36,7 +41,7 @@ public class SongServiceImpl implements SongService {
             PlatformBinding b = bindingService.getDefaultBinding(userId);
             String cookie = aesUtil.decrypt(b.getCookieEncrypted());
             JsonNode data = songApiClient.getUserLikedSongs(b.getPlatform(), cookie);
-            return parseSongs(data, b.getPlatform());
+            return MusicResponseParser.parseSongs(data, b.getPlatform());
         } catch (Exception e) {
             log.warn("getLikedSongs failed for user {}", userId, e);
             return List.of();
@@ -52,6 +57,8 @@ public class SongServiceImpl implements SongService {
                 .last("LIMIT 1"));
         if (existing != null) {
             feedbackEventMapper.deleteById(existing.getId());
+            // Feature 3: 同步取消红心到平台
+            syncPlatformLike(userId, songId, false);
             return false;
         } else {
             FeedbackEvent evt = new FeedbackEvent();
@@ -59,17 +66,52 @@ public class SongServiceImpl implements SongService {
             evt.setSongId(songId);
             evt.setEventType("like");
             feedbackEventMapper.insert(evt);
+            // Feature 3: 同步红心到平台
+            syncPlatformLike(userId, songId, true);
             return true;
         }
     }
 
+    /**
+     * Feature 3: 将红心操作同步到音乐平台（优雅降级：失败不影响本地状态）
+     */
+    private void syncPlatformLike(Long userId, Long songId, boolean like) {
+        try {
+            // 通过 platform_song_mapping 查找平台歌曲 ID
+            PlatformSongMapping mapping = platformSongMappingMapper.selectOne(
+                    new LambdaQueryWrapper<PlatformSongMapping>()
+                            .eq(PlatformSongMapping::getSongId, songId)
+                            .last("LIMIT 1"));
+            if (mapping == null) {
+                log.debug("No platform mapping for song {}, skipping platform sync", songId);
+                return;
+            }
+
+            // 获取用户的平台绑定 cookie
+            PlatformBinding binding = bindingService.getDefaultBinding(userId);
+            String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
+
+            boolean success = songApiClient.likeSong(
+                    mapping.getPlatform(), mapping.getPlatformSongId(), like, cookie);
+            if (success) {
+                log.info("Platform like sync success: song {} platform={} like={}", songId, mapping.getPlatform(), like);
+            } else {
+                log.warn("Platform like sync failed (non-blocking): song {} platform={} like={}", songId, mapping.getPlatform(), like);
+            }
+        } catch (Exception e) {
+            // 优雅降级：平台同步失败不影响本地红心状态
+            log.warn("Platform like sync error (non-blocking): song {}", songId, e);
+        }
+    }
+
     @Override
+    @Cacheable(value = "songs", key = "#userId + ':' + #songId")
     public SongVO getSongDetail(Long userId, Long songId) {
         try {
             PlatformBinding b = bindingService.getDefaultBinding(userId);
             String cookie = aesUtil.decrypt(b.getCookieEncrypted());
             JsonNode data = songApiClient.getSongDetail(b.getPlatform(), String.valueOf(songId), cookie);
-            List<SongVO> songs = parseSongs(data, b.getPlatform());
+            List<SongVO> songs = MusicResponseParser.parseSongs(data, b.getPlatform());
             if (!songs.isEmpty()) return songs.get(0);
         } catch (Exception e) {
             log.warn("getSongDetail failed for song {}", songId, e);
@@ -80,13 +122,23 @@ public class SongServiceImpl implements SongService {
     @Override
     public List<SongVO> getSimilarSongs(Long userId, Long songId) {
         try {
-            SongVO detail = getSongDetail(userId, songId);
-            if ("未知歌曲".equals(detail.getTitle())) return List.of();
             PlatformBinding b = bindingService.getDefaultBinding(userId);
             String cookie = aesUtil.decrypt(b.getCookieEncrypted());
-            String keywords = detail.getTitle() + " " + (detail.getArtist() != null ? detail.getArtist() : "");
-            JsonNode data = songApiClient.searchSongs(b.getPlatform(), keywords.trim(), 10);
-            return parseSongs(data, b.getPlatform()).stream()
+            // Use platform-native simi/song endpoint (e.g. Netease /simi/song)
+            JsonNode simiData = songApiClient.getSimilarSongs(b.getPlatform(), String.valueOf(songId), cookie);
+            List<SongVO> simiSongs = MusicResponseParser.parseSongs(simiData, b.getPlatform());
+            if (!simiSongs.isEmpty()) {
+                return simiSongs.stream()
+                        .filter(s -> !String.valueOf(songId).equals(s.getPlatformSongId()))
+                        .limit(8)
+                        .toList();
+            }
+            // Fallback: keyword search when simi endpoint returns nothing
+            SongVO detail = getSongDetail(userId, songId);
+            if ("未知歌曲".equals(detail.getTitle())) return List.of();
+            String keywords = detail.getTitle() + (detail.getArtist() != null ? " " + detail.getArtist() : "");
+            JsonNode searchData = songApiClient.searchSongs(b.getPlatform(), keywords.trim(), 10);
+            return MusicResponseParser.parseSongs(searchData, b.getPlatform()).stream()
                     .filter(s -> !String.valueOf(songId).equals(s.getPlatformSongId()))
                     .limit(8)
                     .toList();
@@ -110,38 +162,7 @@ public class SongServiceImpl implements SongService {
         }
     }
 
-    // ── 解析工具 ──────────────────────────────────────────────────────
-
-    private List<SongVO> parseSongs(JsonNode data, String platform) {
-        List<SongVO> songs = new ArrayList<>();
-        JsonNode arr = data.path("songs");
-        if (!arr.isArray()) arr = data.path("data").path("songs");
-        if (!arr.isArray()) arr = data.path("result").path("songs");
-        if (!arr.isArray()) return songs;
-
-        for (JsonNode s : arr) {
-            long id = s.path("id").asLong();
-            if (id == 0) continue;
-            String artist = "";
-            JsonNode ar = s.path("ar");
-            if (ar.isArray() && !ar.isEmpty()) artist = ar.get(0).path("name").asText("");
-            if (artist.isEmpty()) artist = s.path("artists").path(0).path("name").asText("");
-            String cover = s.path("al").path("picUrl").asText(s.path("album").path("picUrl").asText(""));
-            String album  = s.path("al").path("name").asText(s.path("album").path("name").asText(""));
-            int dur = s.path("dt").asInt(s.path("duration").asInt(0)) / 1000;
-            songs.add(SongVO.builder()
-                    .id(id)
-                    .title(s.path("name").asText(""))
-                    .artist(artist)
-                    .album(album)
-                    .durationSeconds(dur)
-                    .coverUrl(cover)
-                    .platform(platform)
-                    .platformSongId(String.valueOf(id))
-                    .build());
-        }
-        return songs;
-    }
+    // -- 解析工具 --
 
     private static final Pattern LRC_LINE = Pattern.compile("\\[(\\d{2}):(\\d{2})\\.(\\d{2,3})](.*)");
 

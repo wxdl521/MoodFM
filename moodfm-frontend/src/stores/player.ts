@@ -11,6 +11,7 @@ export const usePlayerStore = defineStore('player', () => {
   const volume = ref(1)
   const sessionId = ref<string | null>(null)
   const skipStreak = ref(0)
+  const trackNumber = ref(1)
 
   let lastSong: Song | null = null
 
@@ -41,6 +42,7 @@ export const usePlayerStore = defineStore('player', () => {
     if (queue.value.length === 0) return
     const nextSong = queue.value.shift()!
     setSong(nextSong)
+    trackNumber.value++
   }
 
   function prev() {
@@ -81,6 +83,7 @@ export const usePlayerStore = defineStore('player', () => {
     volume,
     sessionId,
     skipStreak,
+    trackNumber,
     setSong,
     setQueue,
     addToQueue,

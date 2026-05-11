@@ -2,6 +2,7 @@ package com.moodfm.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.moodfm.domain.entity.PlayRecord;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -127,6 +128,25 @@ public interface PlayRecordMapper extends BaseMapper<PlayRecord> {
             @Param("days")   int days);
 
     @Select("""
+        SELECT JSON_UNQUOTE(JSON_EXTRACT(s.features, '$.genre')) AS genre,
+               COUNT(*) AS cnt
+        FROM play_records pr
+        JOIN songs s ON pr.song_id = s.id
+        WHERE pr.user_id = #{userId}
+          AND pr.played_at >= #{weekStart}
+          AND pr.played_at <  #{weekEnd}
+          AND s.features IS NOT NULL
+          AND JSON_EXTRACT(s.features, '$.genre') IS NOT NULL
+        GROUP BY JSON_EXTRACT(s.features, '$.genre')
+        ORDER BY cnt DESC
+        LIMIT 8
+        """)
+    List<Map<String, Object>> selectGenreCountsByDateRange(
+            @Param("userId")    Long userId,
+            @Param("weekStart") String weekStart,
+            @Param("weekEnd")   String weekEnd);
+
+    @Select("""
         SELECT DATE(pr.played_at) AS date,
                AVG(JSON_EXTRACT(s.features, '$.energy')) AS avgEnergy
         FROM play_records pr
@@ -178,6 +198,72 @@ public interface PlayRecordMapper extends BaseMapper<PlayRecord> {
     long countHistory(
             @Param("userId") Long userId,
             @Param("scene")  String scene);
+
+    /* ── Smart Playlist Queries ───────────────────────────────────── */
+
+    @Select("""
+        SELECT s.title, s.artist, COUNT(*) AS playCount
+        FROM play_records pr
+        JOIN songs s ON pr.song_id = s.id
+        WHERE pr.user_id = #{userId}
+          AND pr.action = 'liked'
+          AND pr.played_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        GROUP BY pr.song_id, s.title, s.artist
+        ORDER BY playCount DESC
+        """)
+    List<Map<String, Object>> selectWeeklyLoves(
+            @Param("userId") Long userId);
+
+    @Select("""
+        SELECT s.title, s.artist, COUNT(*) AS playCount
+        FROM play_records pr
+        JOIN songs s ON pr.song_id = s.id
+        WHERE pr.user_id = #{userId}
+          AND (HOUR(pr.played_at) >= 22 OR HOUR(pr.played_at) < 4)
+        GROUP BY pr.song_id, s.title, s.artist
+        ORDER BY playCount DESC
+        """)
+    List<Map<String, Object>> selectLateNightFavorites(
+            @Param("userId") Long userId);
+
+    @Select("""
+        SELECT s.title, s.artist, COUNT(*) AS playCount
+        FROM play_records pr
+        JOIN songs s ON pr.song_id = s.id
+        LEFT JOIN mood_sessions ms ON pr.session_id = ms.id
+        WHERE pr.user_id = #{userId}
+          AND s.features IS NOT NULL
+          AND JSON_EXTRACT(s.features, '$.energy') >= 0.7
+          AND ms.scene IN ('运动', '通勤')
+        GROUP BY pr.song_id, s.title, s.artist
+        ORDER BY playCount DESC
+        """)
+    List<Map<String, Object>> selectHighEnergySceneSongs(
+            @Param("userId") Long userId);
+
+    @Select("""
+        SELECT s.title, s.artist, COUNT(*) AS playCount
+        FROM play_records pr
+        JOIN songs s ON pr.song_id = s.id
+        WHERE pr.user_id = #{userId}
+          AND pr.played_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+          AND pr.song_id NOT IN (
+                SELECT DISTINCT song_id
+                FROM play_records
+                WHERE user_id = #{userId}
+                  AND played_at < DATE_SUB(NOW(), INTERVAL 30 DAY)
+          )
+        GROUP BY pr.song_id, s.title, s.artist
+        ORDER BY MIN(pr.played_at) DESC
+        """)
+    List<Map<String, Object>> selectRecentDiscoveries(
+            @Param("userId") Long userId);
+
+    @Select("SELECT COALESCE(SUM(played_seconds), 0) FROM play_records")
+    long sumAllPlayedSeconds();
+
+    @Delete("DELETE FROM play_records WHERE user_id = #{userId}")
+    void deleteByUserId(@Param("userId") Long userId);
 
     @Select("""
         SELECT COUNT(DISTINCT song_id)                               AS tracks,

@@ -178,7 +178,7 @@
             :key="song.id"
             class="queue-item"
           >
-            <span class="mono" style="font-size: 10px; opacity: .7">0{{ i + 4 }}</span>
+            <span class="mono" style="font-size: 10px; opacity: .7">{{ String(player.trackNumber + i + 1).padStart(2, '0') }}</span>
             <span style="font-family: var(--serif-cn); font-size: 13px">{{ song.title }}</span>
             <span style="font-size: 12px; opacity: .7">· {{ song.artist }}</span>
             <span class="mono" style="font-size: 10px; opacity: .6">{{ formatTime(song.duration) }}</span>
@@ -231,26 +231,18 @@
       </div>
     </Transition>
 
-    <!-- ── Feedback Banner（连续跳过提示）────────────────────────────── -->
+    <!-- ── Auto-blacklist Toast ─────────────────────────────────────── -->
     <Transition name="fade">
       <div
-        v-if="bannerArtist"
+        v-if="blacklistToast"
         style="position:fixed;bottom:100px;left:50%;transform:translateX(-50%);z-index:60;
                background:var(--ink);color:var(--bg);border-radius:24px;
                padding:14px 20px;display:flex;align-items:center;gap:14px;
                max-width:360px;width:calc(100% - 40px);box-shadow:0 8px 32px rgba(0,0,0,.3);"
       >
         <div style="flex:1;font-family:var(--serif-cn);font-size:14px;line-height:1.5;">
-          连续跳过了 3 首，要屏蔽「{{ bannerArtist }}」吗？
+          已自动拉黑 {{ blacklistToast }}（连续跳过 3 次）
         </div>
-        <button
-          style="background:var(--bg);color:var(--ink);border:none;border-radius:16px;padding:7px 14px;cursor:pointer;font-size:13px;flex-shrink:0;font-family:var(--serif-cn);"
-          @click="handleAddBlacklist"
-        >屏蔽</button>
-        <button
-          style="background:transparent;color:rgba(255,255,255,.6);border:none;cursor:pointer;font-size:18px;flex-shrink:0;line-height:1;"
-          @click="bannerArtist = null"
-        >✕</button>
       </div>
     </Transition>
 
@@ -293,20 +285,26 @@ import { usePlayerStore } from '@/stores/player'
 import { useRadioStore } from '@/stores/radio'
 import { useUiStore } from '@/stores/ui'
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
+import { useWebSocket } from '@/composables/useWebSocket'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import { blacklistApi } from '@/api/blacklist'
 import { songApi, type LyricLine } from '@/api/song'
+import { radioApi } from '@/api/radio'
+import { playlistApi } from '@/api/playlist'
 
 const router = useRouter()
 const player = usePlayerStore()
 const radio  = useRadioStore()
 const ui     = useUiStore()
 const audio  = useAudioPlayer()
+const ws     = useWebSocket()
 
 // ── Local state ─────────────────────────────────────────────────────────────
-const liked         = ref(false)
-const showLyrics    = ref(false)
-const bannerArtist  = ref<string | null>(null)
+const liked             = ref(false)
+const showLyrics        = ref(false)
+const blacklistToast    = ref<string | null>(null)
+const lastSkippedArtist = ref<string | null>(null)
+const consecutiveSkips  = ref(0)
 
 // ── Lyrics state ─────────────────────────────────────────────────────────────
 const lyricsLines    = ref<LyricLine[]>([])
@@ -315,6 +313,30 @@ const lyricsScrollEl = ref<HTMLElement | null>(null)
 
 // Progress simulation when no real audio
 let simTimer: ReturnType<typeof setInterval> | null = null
+
+// ── Volume feedback tracking (Feature: volume_up implicit feedback) ──
+let lastVolumeSentTs = 0
+let prevVolume = player.volume
+
+watch(() => player.volume, (newVol) => {
+  const now = Date.now()
+  // Only send when volume increased by > 10%, debounce 30s
+  if (newVol > prevVolume && (newVol - prevVolume) > 0.1 && now - lastVolumeSentTs > 30_000) {
+    lastVolumeSentTs = now
+    const song = player.currentSong
+    const sid = player.sessionId
+    if (song && sid) {
+      import('@/api/client').then(mod => {
+        mod.default.post('/radio/feedback', {
+          sessionId: Number(sid),
+          songId: Number(song.id),
+          eventType: 'volume_up',
+        }).catch(() => {})
+      })
+    }
+  }
+  prevVolume = newVol
+})
 
 // ── Computed from stores ─────────────────────────────────────────────────────
 const stationName = computed(() =>
@@ -326,7 +348,7 @@ const songArtist = computed(() => player.currentSong?.artist ?? 'Marconi Union')
 
 const queueCount   = computed(() => player.queue.length)
 const totalTracks  = computed(() => player.queue.length + 1)
-const currentIndex = computed(() => '01') // simplified; would need index tracking
+const currentIndex = computed(() => String(player.trackNumber).padStart(2, '0'))
 
 const totalDuration = computed(() =>
   audio.duration.value > 0 ? audio.duration.value : player.duration,
@@ -336,9 +358,11 @@ const currentTime = computed(() =>
 )
 
 const whyText = computed(() => {
+  const reason = player.currentSong?.recommendReason
+  if (reason) return reason
   const mood = radio.moodText
-  if (!mood) return '这首曲子拥有 60 BPM 的稳定节奏，适合当下的心境，让神经系统放慢下来。'
-  return `你的心情是「${mood}」——所以选了这首，让感受先被接住。`
+  if (mood) return `你的心情是「${mood}」——所以选了这首，让感受先被接住。`
+  return '这首曲子拥有稳定节奏，适合当下的心境，让神经系统放慢下来。'
 })
 
 const songTags = computed(() => {
@@ -433,29 +457,48 @@ function handlePrev() {
 }
 
 function handleSkip() {
-  player.incrementSkipStreak()
-  if (player.skipStreak >= 3 && player.currentSong?.artist) {
-    bannerArtist.value = player.currentSong.artist
-    player.resetSkipStreak()
-  }
+  const skippedArtist = player.currentSong?.artist
   handleNext()
-}
 
-async function handleAddBlacklist() {
-  if (!bannerArtist.value) return
-  try {
-    await blacklistApi.add({ type: 'artist', value: bannerArtist.value, label: bannerArtist.value })
-  } catch {
-    // 静默失败，不影响体验
+  if (!skippedArtist) return
+
+  if (skippedArtist === lastSkippedArtist.value) {
+    consecutiveSkips.value++
+  } else {
+    lastSkippedArtist.value = skippedArtist
+    consecutiveSkips.value = 1
   }
-  bannerArtist.value = null
+
+  if (consecutiveSkips.value >= 3) {
+    blacklistApi.add({ type: 'artist', value: skippedArtist, label: skippedArtist }).catch(() => {})
+    blacklistToast.value = skippedArtist
+    consecutiveSkips.value = 0
+    lastSkippedArtist.value = null
+    setTimeout(() => { blacklistToast.value = null }, 3000)
+  }
 }
 
-function toggleLike() {
-  liked.value = !liked.value
+async function toggleLike() {
+  const song = player.currentSong
+  if (!song?.id) return
+  try {
+    const res = await playlistApi.toggleLike(song.id)
+    liked.value = res.liked
+  } catch {
+    // silent — don't block playback on like errors
+  }
 }
 
-function handleDislike() {
+async function handleDislike() {
+  const song = player.currentSong
+  const sid = player.sessionId
+  if (song && sid) {
+    try {
+      await radioApi.feedback({ songId: song.id, sessionId: sid, action: 'dislike' })
+    } catch {
+      // silent — don't block playback on feedback errors
+    }
+  }
   handleNext()
 }
 
@@ -527,6 +570,7 @@ onMounted(() => {
     router.replace('/home')
     return
   }
+  if (player.sessionId) ws.connect(player.sessionId)
   if (player.currentSong.audioUrl && !player.isPlaying) {
     audio.load(player.currentSong.audioUrl).then(() => audio.play())
   } else if (!player.currentSong.audioUrl) {

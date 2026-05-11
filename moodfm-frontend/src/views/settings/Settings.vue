@@ -112,6 +112,7 @@ import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import { useUiStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
 import { userApi } from '@/api/user'
+import { historyApi } from '@/api/history'
 import type { MoodPreset, Theme } from '@/types'
 
 const router = useRouter()
@@ -215,10 +216,14 @@ const settingGroups = ref<SettingGroup[]>([
     title: '隐私',
     en: 'PRIVACY',
     items: [
+      { l: '通知设置', kind: 'link', hint: '周报 · 提醒', action: () => router.push('/settings/notifications') },
       { l: '分享情绪周报到公开主页', kind: 'toggle', value: false },
       { l: '匿名贡献心情数据', kind: 'toggle', value: true, sub: '帮助改善推荐 · 永不识别个人' },
-      { l: '黑名单管理', kind: 'link', hint: '12 首', action: () => router.push('/blacklist') },
-      { l: '清除播放历史', kind: 'link', danger: true, hint: '', action: () => askConfirm('清除播放历史', '此操作无法撤销，你的全部播放历史将被永久删除。', async () => { await userApi.getDevices() }) },
+      { l: '黑名单管理', kind: 'link', hint: '12 首', action: () => router.push('/settings/blacklist') },
+      { l: '导出我的数据 (JSON)', kind: 'link', sub: '下载全量播放、反馈、心情数据', action: () => window.open('/api/export/json') },
+      { l: '导出播放记录 (CSV)', kind: 'link', sub: '导出 CSV 格式播放历史', action: () => window.open('/api/export/csv') },
+      { l: '清除播放历史', kind: 'link', danger: true, hint: '', action: () => askConfirm('清除播放历史', '此操作无法撤销，你的全部播放历史将被永久删除。', async () => { await historyApi.clear() }) },
+      { l: '清除所有数据', kind: 'link', danger: true, sub: '删除全部播放、反馈、心情数据（保留账号）', action: () => askConfirm('清除所有数据', '此操作将永久删除你的所有播放记录、反馈事件、心情会话、周报和平台绑定。账号本身会保留。', async () => { await userApi.deleteAllData() }) },
     ],
   },
   {
@@ -274,8 +279,8 @@ function savePreferences() {
 onMounted(async () => {
   try {
     const res = await userApi.getPreferences()
-    if (res?.data) {
-      const prefs = res.data
+    if (res) {
+      const prefs = res
       const prefGroup = settingGroups.value.find(g => g.en === 'RADIO PREFERENCES')
       const autoPlayItem = prefGroup?.items.find(i => i.l === '自动续播')
       if (autoPlayItem) autoPlayItem.value = prefs.autoPlay ?? true
