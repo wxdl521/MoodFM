@@ -72,10 +72,12 @@ public class SearchServiceImpl implements SearchService {
             try {
                 String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
                 JsonNode raw = musicApiClient.searchSongs(binding.getPlatform(), query, limit);
-                List<SongVO> songs = MusicResponseParser.parseSongs(raw, binding.getPlatform());
-                for (SongVO song : songs) {
-                    String key = song.getPlatform() + ":" + song.getPlatformSongId();
-                    dedupMap.putIfAbsent(key, song);
+                List<SongVO> parsed = MusicResponseParser.parseSongs(raw, binding.getPlatform());
+                if (parsed != null) {
+                    for (SongVO song : parsed) {
+                        String key = buildKey(song);
+                        dedupMap.putIfAbsent(key, song);
+                    }
                 }
             } catch (Exception e) {
                 log.warn("Keyword search failed for platform {} (userId={}): {}",
