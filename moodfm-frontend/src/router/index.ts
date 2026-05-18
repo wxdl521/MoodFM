@@ -8,6 +8,7 @@ const router = createRouter({
     { path: '/auth', component: () => import('@/views/auth/Auth.vue') },
     { path: '/onboarding', component: () => import('@/views/Onboarding.vue'), meta: { requiresAuth: true } },
     { path: '/bind', component: () => import('@/views/Bind.vue'), meta: { requiresAuth: true } },
+    { path: '/search', component: () => import('@/views/Search.vue'), meta: { requiresAuth: true } },
     { path: '/home', component: () => import('@/views/home/Home.vue'), meta: { requiresAuth: true } },
     { path: '/player', component: () => import('@/views/player/Player.vue'), meta: { requiresAuth: true } },
     { path: '/playlists', component: () => import('@/views/library/PlaylistList.vue'), meta: { requiresAuth: true } },
@@ -28,7 +29,22 @@ const router = createRouter({
     { path: '/settings', component: () => import('@/views/settings/Settings.vue'), meta: { requiresAuth: true } },
     { path: '/settings/platforms', component: () => import('@/views/settings/Platforms.vue'), meta: { requiresAuth: true } },
     { path: '/profile', component: () => import('@/views/Profile.vue'), meta: { requiresAuth: true } },
-    { path: '/admin', component: () => import('@/views/admin/Admin.vue'), meta: { requiresAuth: true, requiresAdmin: true } },
+    {
+      path: '/admin',
+      component: () => import('@/views/admin/AdminLayout.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true },
+      children: [
+        { path: '', redirect: '/admin/dashboard' },
+        { path: 'dashboard', component: () => import('@/views/admin/AdminDashboard.vue') },
+        { path: 'users', component: () => import('@/views/admin/AdminUsers.vue') },
+        { path: 'music', component: () => import('@/views/admin/AdminMusic.vue') },
+        { path: 'platforms', component: () => import('@/views/admin/AdminPlatforms.vue') },
+        { path: 'ai', component: () => import('@/views/admin/AdminAIEngine.vue') },
+        { path: 'analytics', component: () => import('@/views/admin/AdminAnalytics.vue') },
+        { path: 'notifications', component: () => import('@/views/admin/AdminNotifications.vue') },
+        { path: 'system', component: () => import('@/views/admin/AdminSystem.vue') },
+      ]
+    },
     { path: '/:pathMatch(.*)*', component: () => import('@/views/ErrorPage.vue') },
   ],
 })
