@@ -2,7 +2,6 @@ export type Platform = 'netease' | 'qqmusic'
 export type MoodPreset = 'dusk' | 'melancholy' | 'energetic' | 'focused' | 'calm'
 export type Theme = 'light' | 'dark'
 export type FeedbackAction = 'like' | 'dislike' | 'skip' | 'love' | 'blacklist'
-export type SessionStatus = 'active' | 'paused' | 'ended'
 
 export interface User {
   id: number
@@ -38,27 +37,9 @@ export interface RadioSession {
   sessionId: string
   moodText: string
   scene?: string
-  status: SessionStatus
+  status: 'active' | 'paused' | 'ended'
   createdAt: string
   moodPreset?: MoodPreset
-}
-
-export interface Playlist {
-  id: string
-  name: string
-  platform: Platform
-  coverUrl?: string
-  trackCount: number
-  description?: string
-  isLoved?: boolean
-}
-
-export interface PlayHistory {
-  id: string
-  song: Song
-  playedAt: string
-  sessionId?: string
-  durationPlayed: number
 }
 
 export interface Feedback {
@@ -68,13 +49,15 @@ export interface Feedback {
   timestamp?: string
 }
 
-export interface AuthResponse {
-  token: string
-  user: User
-}
-
-export interface ApiError {
-  message: string
-  code?: string
-  status?: number
+export interface SongVO {
+  id: number
+  title: string
+  artist: string
+  album?: string
+  durationSeconds?: number
+  coverUrl?: string
+  platform?: string
+  platformSongId?: string
+  playUrl?: string
+  recommendReason?: string
 }
