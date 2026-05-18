@@ -83,7 +83,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { useRadioStore } from '@/stores/radio'
 import { usePlayerStore } from '@/stores/player'
 import NavBar from '@/components/common/NavBar.vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
@@ -93,7 +92,6 @@ import type { SearchMode } from '@/api/search'
 import type { SongVO, Song } from '@/types'
 
 const router = useRouter()
-const radio = useRadioStore()
 const player = usePlayerStore()
 
 type TabDef = { mode: SearchMode; label: string; en: string; placeholder: string; hint: string }
