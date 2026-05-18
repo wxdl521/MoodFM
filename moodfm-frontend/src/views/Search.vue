@@ -54,7 +54,8 @@
           v-for="(song, i) in songs"
           :key="song.platform + ':' + song.platformSongId"
           class="result-row"
-          @click="playSong(song)"
+          :style="playingIndex === i ? { opacity: '0.6', pointerEvents: 'none' } : {}"
+          @click="playSong(song, i)"
         >
           <div class="result-index mono">{{ String(i + 1).padStart(2, '0') }}</div>
           <img v-if="song.coverUrl" :src="song.coverUrl" class="result-cover" :alt="song.title" />
@@ -83,14 +84,17 @@
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRadioStore } from '@/stores/radio'
+import { usePlayerStore } from '@/stores/player'
 import NavBar from '@/components/common/NavBar.vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import { searchApi } from '@/api/search'
+import { radioApi } from '@/api/radio'
 import type { SearchMode } from '@/api/search'
-import type { SongVO } from '@/types'
+import type { SongVO, Song } from '@/types'
 
 const router = useRouter()
 const radio = useRadioStore()
+const player = usePlayerStore()
 
 type TabDef = { mode: SearchMode; label: string; en: string; placeholder: string; hint: string }
 
@@ -158,12 +162,48 @@ function formatDur(secs: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-async function playSong(song: SongVO) {
-  radio.setMoodText(song.title)
+function voToSong(vo: SongVO): Song {
+  return {
+    id: String(vo.id ?? ''),
+    title: vo.title,
+    artist: vo.artist,
+    album: vo.album,
+    platform: (vo.platform ?? 'netease') as Song['platform'],
+    platformSongId: vo.platformSongId ?? '',
+    duration: vo.durationSeconds ?? 0,
+    coverUrl: vo.coverUrl,
+    audioUrl: vo.playUrl ?? undefined,
+    recommendReason: vo.recommendReason,
+  }
+}
+
+const playingIndex = ref<number | null>(null)
+
+async function playSong(song: SongVO, index: number) {
+  playingIndex.value = index
   try {
-    await radio.startRadio({ moodText: song.title })
-  } catch {}
-  router.push('/player')
+    const mapped = voToSong(song)
+
+    // Fetch play URL if platform info is available
+    if (song.platform && song.platformSongId) {
+      try {
+        const url = await radioApi.getSongUrl(song.platform, song.platformSongId)
+        if (url) mapped.audioUrl = url
+      } catch {
+        // proceed without URL; Player handles missing audioUrl gracefully
+      }
+    }
+
+    // Set this song + remaining results as queue
+    const queueSongs = songs.value.slice(index + 1).map(voToSong)
+    player.setSessionId('')
+    player.setSong(mapped)
+    player.setQueue(queueSongs)
+    player.setPlaying(true)
+    router.push('/player')
+  } finally {
+    playingIndex.value = null
+  }
 }
 </script>
 
