@@ -1,6 +1,7 @@
 package com.moodfm.controller;
 
 import com.moodfm.common.result.R;
+import com.moodfm.common.result.ResultCode;
 import com.moodfm.domain.vo.SearchResultVO;
 import com.moodfm.service.search.SearchService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -38,9 +39,11 @@ public class SearchController {
             @RequestParam(defaultValue = "20") int limit,
             @AuthenticationPrincipal UserDetails ud) {
         if (q == null || q.isBlank()) {
-            return R.ok(SearchResultVO.builder()
-                    .mode(mode).query("").songs(List.of()).build());
+            return R.fail(ResultCode.BAD_REQUEST, "搜索词不能为空");
         }
-        return R.ok(searchService.search(uid(ud), q.trim(), mode, limit));
+        if (!"keyword".equals(mode) && !"mood".equals(mode)) {
+            return R.fail(ResultCode.BAD_REQUEST, "mode 仅支持 keyword / mood");
+        }
+        return R.ok(searchService.search(uid(ud), q.trim(), mode, Math.min(limit, 50)));
     }
 }
