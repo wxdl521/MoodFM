@@ -71,7 +71,7 @@ public class SearchServiceImpl implements SearchService {
         for (PlatformBinding binding : bindings) {
             try {
                 String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
-                JsonNode raw = musicApiClient.searchSongs(binding.getPlatform(), query, limit);
+                JsonNode raw = musicApiClient.searchSongs(binding.getPlatform(), query, limit, cookie);
                 List<SongVO> parsed = MusicResponseParser.parseSongs(raw, binding.getPlatform());
                 if (parsed != null) {
                     for (SongVO song : parsed) {

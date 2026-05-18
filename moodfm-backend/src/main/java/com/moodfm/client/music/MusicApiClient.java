@@ -10,6 +10,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -120,13 +122,15 @@ public class MusicApiClient {
     }
 
     @CircuitBreaker(name = "music-adapter", fallbackMethod = "fallbackSongs")
-    public JsonNode searchSongs(String platform, String keywords, int limit) {
+    public JsonNode searchSongs(String platform, String keywords, int limit, String cookie) {
         try {
-            String json = restClient
+            var req = restClient
                     .get()
-                    .uri("/{p}/search?keywords={kw}&limit={limit}", route(platform), keywords, limit)
-                    .retrieve()
-                    .body(String.class);
+                    .uri("/{p}/search?keywords={kw}&limit={limit}", route(platform), keywords, limit);
+            if (cookie != null && !cookie.isBlank()) {
+                req = req.header("X-Cookie", cookie);
+            }
+            String json = req.retrieve().body(String.class);
             return objectMapper.readTree(json);
         } catch (Exception e) {
             log.warn("Search failed for keywords: {}", keywords, e);
@@ -148,6 +152,42 @@ public class MusicApiClient {
             log.warn("Failed to get song URL for {}", songId, e);
             return null;
         }
+    }
+
+    /**
+     * Batch fetch play URLs for multiple songs in a single API call.
+     * NetEase song_url_v1 supports comma-separated IDs.
+     *
+     * @return map of platformSongId -> playUrl (entries with no URL are omitted)
+     */
+    @CircuitBreaker(name = "music-adapter", fallbackMethod = "fallbackSongUrls")
+    public Map<String, String> getSongUrls(String platform, List<String> songIds, String cookie) {
+        Map<String, String> urlMap = new HashMap<>();
+        if (songIds == null || songIds.isEmpty()) return urlMap;
+        try {
+            // Build URI manually to avoid URL-encoding commas in the id parameter
+            String idsParam = String.join(",", songIds);
+            String url = adapterUrl + "/" + route(platform) + "/song/url?id=" + idsParam;
+            String json = restClient
+                    .get()
+                    .uri(java.net.URI.create(url))
+                    .header("X-Cookie", cookie)
+                    .retrieve()
+                    .body(String.class);
+            com.fasterxml.jackson.databind.JsonNode data = objectMapper.readTree(json).path("data");
+            if (data.isArray()) {
+                for (com.fasterxml.jackson.databind.JsonNode item : data) {
+                    String id = String.valueOf(item.path("id").asLong(0));
+                    String songUrl = item.path("url").asText("");
+                    if (!id.isEmpty() && !"0".equals(id) && !songUrl.isEmpty()) {
+                        urlMap.put(id, songUrl);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to batch get song URLs for {} songs", songIds.size(), e);
+        }
+        return urlMap;
     }
 
     /** 获取用户歌单列表 */
@@ -198,7 +238,7 @@ public class MusicApiClient {
         return objectMapper.createObjectNode();
     }
 
-    private JsonNode fallbackSongs(String platform, String keywords, int limit, Exception e) {
+    private JsonNode fallbackSongs(String platform, String keywords, int limit, String cookie, Exception e) {
         return objectMapper.createObjectNode();
     }
 
@@ -212,5 +252,10 @@ public class MusicApiClient {
 
     private JsonNode fallbackNode(String platform, String id, String cookie, Exception e) {
         return objectMapper.createObjectNode();
+    }
+
+    private Map<String, String> fallbackSongUrls(String platform, List<String> songIds, String cookie, Exception e) {
+        log.warn("Song URL batch fetch fallback triggered", e);
+        return Map.of();
     }
 }
