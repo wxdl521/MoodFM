@@ -46,7 +46,7 @@ class SearchControllerTest {
         SearchResultVO result = SearchResultVO.builder()
                 .mode("keyword").query("晴天").songs(List.of(song)).build();
 
-        when(searchService.search(eq(1L), eq("晴天"), eq("keyword"), anyInt()))
+        when(searchService.search(eq(1L), eq("晴天"), eq("keyword"), eq(20)))
                 .thenReturn(result);
 
         mockMvc.perform(get("/api/search").param("q", "晴天"))
@@ -57,6 +57,7 @@ class SearchControllerTest {
     }
 
     @Test
+    @WithMockUser(username = "1")
     void search_blankQuery_returns400() throws Exception {
         mockMvc.perform(get("/api/search").param("q", "  "))
                 .andExpect(status().isOk())
@@ -70,16 +71,18 @@ class SearchControllerTest {
         SearchResultVO result = SearchResultVO.builder()
                 .mode("mood").query("深夜忧郁").songs(List.of()).build();
 
-        when(searchService.search(eq(1L), eq("深夜忧郁"), eq("mood"), anyInt()))
+        when(searchService.search(eq(1L), eq("深夜忧郁"), eq("mood"), eq(20)))
                 .thenReturn(result);
 
         mockMvc.perform(get("/api/search").param("q", "深夜忧郁").param("mode", "mood"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.mode").value("mood"));
+                .andExpect(jsonPath("$.data.mode").value("mood"))
+                .andExpect(jsonPath("$.data.songs").isArray());
     }
 
     @Test
+    @WithMockUser(username = "1")
     void search_invalidMode_returns400() throws Exception {
         mockMvc.perform(get("/api/search").param("q", "test").param("mode", "fuzzy"))
                 .andExpect(status().isOk())
