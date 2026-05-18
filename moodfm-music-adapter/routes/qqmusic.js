@@ -38,6 +38,17 @@ function calcPtqrtoken(qrsig) {
   return e & 2147483647
 }
 
+// Extract UIN number from QQ cookie string (uin=o12345678 → 12345678)
+function extractUin(cookieStr) {
+  const match = cookieStr.match(/\buin=o?(\d+)/i)
+  return match ? match[1] : '0'
+}
+
+// Generate a random device GUID (UUID without hyphens)
+function randomGuid() {
+  return crypto.randomUUID().replace(/-/g, '')
+}
+
 // Clean up expired sessions every minute
 setInterval(() => {
   const now = Date.now()
@@ -63,6 +74,7 @@ router.get('/qr/key', async (req, res) => {
       headers: { 'User-Agent': UA, Referer: 'https://y.qq.com' }
     })
 
+    // Manually parse Set-Cookie to avoid library parsing issues
     const cookieJar = parseCookies(response.headers['set-cookie'])
     const qrimg = 'data:image/png;base64,' + Buffer.from(response.data).toString('base64')
 
@@ -129,9 +141,16 @@ router.get('/qr/check', async (req, res) => {
       return res.json({ code: 800, message: '二维码已过期' })
     }
     if (code === 0) {
-      const newJar = { ...session.cookieJar, ...parseCookies(response.headers['set-cookie']) }
+      // Manually merge cookies from the successful response to avoid library parsing bugs
+      const newCookies = parseCookies(response.headers['set-cookie'])
+      const mergedJar = { ...session.cookieJar, ...newCookies }
+
+      // Extract nick from JSONP response: ptuiCB('0','uin','url','','msg','nick')
+      const nickMatch = text.match(/ptuiCB\('[^']*','[^']*','[^']*','[^']*','[^']*','([^']*)'\)/)
+      const username = nickMatch ? nickMatch[1] : ''
+
       sessions.delete(key)
-      return res.json({ code: 803, cookie: jarToString(newJar) })
+      return res.json({ code: 803, cookie: jarToString(mergedJar), account: username })
     }
     // code 65 = still waiting
     return res.json({ code: 801, message: '等待扫码' })
@@ -141,11 +160,153 @@ router.get('/qr/check', async (req, res) => {
   }
 })
 
+// --------- Phone Login ---------
+
+// In-memory phone sessions: ticket -> { phone, sig, createdAt }
+const phoneSessions = new Map()
+
+setInterval(() => {
+  const now = Date.now()
+  for (const [k, v] of phoneSessions) {
+    if (now - v.createdAt > 10 * 60 * 1000) phoneSessions.delete(k)
+  }
+}, 60 * 1000)
+
+// Step 1: send SMS verification code
+router.post('/phone/code', async (req, res) => {
+  const { phone } = req.body
+  if (!phone) return res.status(400).json({ error: 'phone is required' })
+
+  try {
+    // First get a login sig (required for ptlogin phone flow)
+    const sigRes = await axios.get('https://ssl.ptlogin2.qq.com/login', {
+      params: {
+        daid: DAID, appid: APP_ID, pt_no_auth: 1,
+        pt_wxtest: 1, login_type: 3
+      },
+      headers: { 'User-Agent': UA, Referer: 'https://y.qq.com' },
+      timeout: 8000,
+      maxRedirects: 0,
+      validateStatus: s => s < 400
+    })
+
+    const loginSig = parseCookies(sigRes.headers['set-cookie']).pt_login_sig || ''
+
+    // Request SMS code
+    const smsRes = await axios.get('https://ssl.ptlogin2.qq.com/pt_get_uinAndLoginSig', {
+      params: {
+        appid: APP_ID, daid: DAID,
+        'phone-num': phone,
+        pt_sms_ticket: '', login_sig: loginSig,
+        pt_rand: Math.random(), regmaster: 0,
+        action: '3-26-' + Date.now()
+      },
+      headers: {
+        'User-Agent': UA,
+        Referer: 'https://ssl.ptlogin2.qq.com/',
+        Cookie: `pt_login_sig=${loginSig}`
+      },
+      timeout: 10000
+    })
+
+    const smsText = typeof smsRes.data === 'string' ? smsRes.data : JSON.stringify(smsRes.data)
+    // Response: ptuiCB('code', ...) — 0 = success
+    const smsMatch = smsText.match(/ptuiCB\('(\d+)'/)
+    const smsCode = smsMatch ? parseInt(smsMatch[1]) : -1
+
+    if (smsCode !== 0 && smsCode !== 10054) {
+      return res.status(400).json({ error: '短信发送失败，请检查手机号' })
+    }
+
+    const ticket = crypto.randomBytes(16).toString('hex')
+    phoneSessions.set(ticket, { phone, loginSig, createdAt: Date.now() })
+
+    res.json({ code: 200, data: { ticket } })
+  } catch (e) {
+    console.error('QQ Music phone/code error:', e.message)
+    res.status(500).json({ error: '短信发送失败: ' + e.message })
+  }
+})
+
+// Step 2: verify SMS code and get cookie
+router.post('/phone/verify', async (req, res) => {
+  const { phone, code, ticket } = req.body
+  if (!phone || !code || !ticket) return res.status(400).json({ error: 'phone, code and ticket are required' })
+
+  const session = phoneSessions.get(ticket)
+  if (!session || session.phone !== phone) {
+    return res.status(400).json({ error: '会话已过期，请重新获取验证码' })
+  }
+
+  try {
+    const verifyRes = await axios.get('https://ssl.ptlogin2.qq.com/pt_verifysms', {
+      params: {
+        appid: APP_ID, daid: DAID,
+        'phone-num': phone,
+        sms_code: code,
+        login_sig: session.loginSig,
+        pt_rand: Math.random(),
+        action: '3-26-' + Date.now(),
+        regmaster: 0
+      },
+      headers: {
+        'User-Agent': UA,
+        Referer: 'https://ssl.ptlogin2.qq.com/',
+        Cookie: `pt_login_sig=${session.loginSig}`
+      },
+      timeout: 10000
+    })
+
+    const verifyText = typeof verifyRes.data === 'string' ? verifyRes.data : JSON.stringify(verifyRes.data)
+    const verifyMatch = verifyText.match(/ptuiCB\('(\d+)'/)
+    const verifyCode = verifyMatch ? parseInt(verifyMatch[1]) : -1
+
+    if (verifyCode !== 0) {
+      return res.status(400).json({ error: '验证码错误或已过期' })
+    }
+
+    const cookieJar = parseCookies(verifyRes.headers['set-cookie'])
+    // Extract nick from JSONP
+    const nickMatch = verifyText.match(/ptuiCB\('[^']*','[^']*','[^']*','[^']*','[^']*','([^']*)'\)/)
+    const username = nickMatch ? nickMatch[1] : ''
+
+    phoneSessions.delete(ticket)
+    res.json({ code: 803, cookie: jarToString(cookieJar), account: username })
+  } catch (e) {
+    console.error('QQ Music phone/verify error:', e.message)
+    res.status(500).json({ error: '验证失败: ' + e.message })
+  }
+})
+
 // --------- User data (cookie required) ---------
 
 function getCookie(req) {
   return req.headers['x-cookie'] || ''
 }
+
+// Validate cookie and return user info
+router.get('/user/profile', async (req, res) => {
+  const cookie = getCookie(req)
+  if (!cookie) return res.status(401).json({ valid: false, error: 'cookie required' })
+  try {
+    const response = await axios.get('https://c.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg', {
+      params: { req: 0, utf8: 1, ct: 24, cv: 0, format: 'json', g_tk: 5381 },
+      headers: { Cookie: cookie, Referer: 'https://y.qq.com', 'User-Agent': UA },
+      timeout: 8000,
+    })
+    const data = response.data
+    // code 0 = success; non-zero = cookie invalid or expired
+    if (!data || data.code !== 0) {
+      return res.json({ valid: false })
+    }
+    const creator = data.data?.creator || {}
+    const username = creator.nick || creator.name || ''
+    res.json({ valid: true, username })
+  } catch (e) {
+    console.error('QQ Music user/profile error:', e.message)
+    res.json({ valid: false })
+  }
+})
 
 router.get('/user/liked-songs', async (req, res) => {
   const cookie = getCookie(req)
@@ -249,14 +410,73 @@ router.get('/search', async (req, res) => {
   }
 })
 
+// Get song play URL via QQ Music vkey API
 router.get('/song/url', async (req, res) => {
   const { id } = req.query
   if (!id) return res.status(400).json({ error: 'id is required' })
-  // QQ Music song URL retrieval requires VIP authentication and access to
-  // their encrypted playback API (fcg_guess_song_url), which is not publicly
-  // available. This endpoint remains a stub until a proper VIP auth flow is
-  // integrated.
-  res.json({ code: 200, data: [] })
+
+  const cookie = getCookie(req)
+  const uin = cookie ? extractUin(cookie) : '0'
+  const guid = randomGuid()
+
+  // Support comma-separated IDs for batch requests
+  const songmids = id.split(',').map(s => s.trim()).filter(Boolean)
+
+  try {
+    const payload = {
+      req_0: {
+        module: 'vkey.GetVkeyServer',
+        method: 'CgiGetVkey',
+        param: {
+          guid,
+          songmid: songmids,
+          songtype: songmids.map(() => 0),
+          uin,
+          loginflag: 1,
+          platform: '20'
+        }
+      },
+      comm: { g_tk: 5381, uin, format: 'json', ct: 24, cv: 0 }
+    }
+
+    const response = await axios.post('https://u.y.qq.com/cgi-bin/musicu.fcg', payload, {
+      headers: {
+        Cookie: cookie || '',
+        Referer: 'https://y.qq.com',
+        'User-Agent': UA,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    })
+
+    const vkeyData = response.data?.req_0?.data
+    if (!vkeyData) {
+      return res.json({ code: 200, data: [] })
+    }
+
+    const sips = vkeyData.sip || ['https://dl.stream.qqmusic.qq.com/']
+    const sip = sips.find(s => s.startsWith('https')) || sips[0] || 'https://dl.stream.qqmusic.qq.com/'
+    const midurlinfos = vkeyData.midurlinfo || []
+
+    const data = midurlinfos.map((info, idx) => {
+      const songmid = songmids[idx] || info.songmid || ''
+      const purl = info.purl || ''
+      let url = null
+
+      if (purl) {
+        // Build full URL: CDN base + purl + vkey params
+        const vkey = info.vkey || ''
+        url = `${sip}${purl}?vkey=${vkey}&guid=${guid}&uin=${uin}&fromtag=66`
+      }
+
+      return { id: songmid, url }
+    })
+
+    res.json({ code: 200, data })
+  } catch (e) {
+    console.error('QQ Music song/url error:', e.message)
+    res.json({ code: 200, data: [] })
+  }
 })
 
 // Like / unlike song (QQ Music music_like_new.fcg)
@@ -287,24 +507,84 @@ router.get('/song/like', async (req, res) => {
   }
 })
 
-// Lyrics (stub — QQ Music lyrics require auth)
+// Lyrics via QQ Music public API
 router.get('/lyric', async (req, res) => {
-  res.json({ code: 200, lrc: { lyric: '' } })
+  const { id } = req.query
+  if (!id) return res.json({ code: 200, lrc: { lyric: '' } })
+  try {
+    const response = await axios.get('https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg', {
+      params: { songmid: id, g_tk: 5381, format: 'json', inCharset: 'utf8', outCharset: 'utf-8', nobase64: 1 },
+      headers: { Referer: 'https://y.qq.com', 'User-Agent': UA },
+      timeout: 8000
+    })
+    const lyric = response.data?.lyric || ''
+    // Lyric is base64-encoded when nobase64=0, but with nobase64=1 it's plain text
+    res.json({ code: 200, lrc: { lyric } })
+  } catch (e) {
+    console.error('QQ Music lyric error:', e.message)
+    res.json({ code: 200, lrc: { lyric: '' } })
+  }
 })
 
-// Similar songs (stub — no public API)
+// Similar songs (stub — no reliable public API)
 router.get('/simi/song', async (req, res) => {
   res.json({ code: 200, songs: [] })
 })
 
-// User playlists (stub)
+// User playlists
 router.get('/user/playlists', async (req, res) => {
-  res.json({ code: 200, playlist: [] })
+  const cookie = getCookie(req)
+  if (!cookie) return res.status(401).json({ error: 'cookie required' })
+  try {
+    const uin = extractUin(cookie)
+    const response = await axios.get('https://c.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg', {
+      params: { req: 1, utf8: 1, ct: 24, cv: 0, format: 'json', g_tk: 5381, uin },
+      headers: { Cookie: cookie, Referer: 'https://y.qq.com', 'User-Agent': UA },
+      timeout: 10000
+    })
+    const myplay = response.data?.data?.myplay || []
+    const playlist = myplay.map(p => ({
+      id: p.dissid || p.tid || '',
+      name: p.dissname || p.title || '',
+      cover: p.logo || p.cover || '',
+      trackCount: p.song_cnt || p.count || 0,
+    }))
+    res.json({ code: 200, playlist })
+  } catch (e) {
+    console.error('QQ Music user/playlists error:', e.message)
+    res.json({ code: 200, playlist: [] })
+  }
 })
 
-// Playlist tracks (stub)
+// Playlist tracks
 router.get('/playlist/tracks', async (req, res) => {
-  res.json({ code: 200, songs: [] })
+  const { id } = req.query
+  if (!id) return res.status(400).json({ error: 'id is required' })
+  const cookie = getCookie(req)
+  try {
+    const response = await axios.get('https://c.y.qq.com/v8/fcg-bin/fcg_v8_playlist_cp.fcg', {
+      params: { id, format: 'json', newsong: 1, g_tk: 5381 },
+      headers: {
+        Cookie: cookie || '',
+        Referer: 'https://y.qq.com',
+        'User-Agent': UA
+      },
+      timeout: 10000
+    })
+    const songList = response.data?.cdlist?.[0]?.songlist || []
+    const songs = songList.map(song => ({
+      id: song.songmid || song.mid || String(song.id),
+      name: song.songname || song.title || '',
+      artist: (song.singer || []).map(s => s.name).join('/'),
+      album: song.album?.name || '',
+      duration: song.interval || 0,
+      cover: `https://y.qq.com/music/photo_new/T002R300x300M000${song.album?.mid || ''}.jpg`
+    }))
+    res.json({ code: 200, songs })
+  } catch (e) {
+    console.error('QQ Music playlist/tracks error:', e.message)
+    res.json({ code: 200, songs: [] })
+  }
 })
 
 // Song detail via public API (no auth needed)

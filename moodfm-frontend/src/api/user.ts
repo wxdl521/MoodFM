@@ -6,7 +6,6 @@ interface NotificationSettings { weeklyReport: boolean; cookieExpiry: boolean; n
 
 interface UpdateProfileBody { username?: string; email?: string }
 interface ChangePasswordBody { oldPassword: string; newPassword: string }
-interface Device { id: string; deviceName: string; lastActive: string }
 
 export const userApi = {
   getProfile:        (): Promise<User>                      => api.get('/user/profile'),
@@ -21,8 +20,6 @@ export const userApi = {
   updatePreferences: (body: Partial<UserPreferences>): Promise<UserPreferences> => api.put('/user/preferences', body),
   getNotificationSettings:    (): Promise<NotificationSettings>               => api.get('/user/notifications/settings'),
   updateNotificationSettings: (body: Partial<NotificationSettings>): Promise<void> => api.put('/user/notifications/settings', body),
-  getDevices:        (): Promise<Device[]>                           => api.get('/user/devices'),
-  revokeDevice:      (id: string): Promise<void>                     => api.delete(`/user/devices/${id}`),
   deleteAccount:     (): Promise<void>                               => api.delete('/user/account'),
   deleteAllData:     (): Promise<void>                               => api.delete('/user/data/all'),
 };

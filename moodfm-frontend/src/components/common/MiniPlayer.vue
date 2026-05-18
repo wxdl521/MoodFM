@@ -72,10 +72,30 @@ function handlePlayPause() {
 }
 
 function handleNext() {
+  const prevSong = playerStore.currentSong
+  const sid = playerStore.sessionId
+  const playedSecs = Math.round(audioPlayer.currentTime.value) || 0
+  const totalSecs = Math.round(audioPlayer.duration.value || prevSong?.duration || 0) || 0
   playerStore.next()
   const song = playerStore.currentSong
   if (song?.audioUrl) {
-    audioPlayer.load(song.audioUrl).then(() => audioPlayer.play())
+    audioPlayer.load(song.audioUrl)
+      .then(() => audioPlayer.play())
+      .catch(() => { if (playerStore.queue.length > 0) handleNext() })
+  } else {
+    audioPlayer.stop()
+  }
+  if (prevSong?.id && sid) {
+    import('@/api/client').then(({ default: apiClient }) => {
+      apiClient.post('/radio/feedback', {
+        sessionId: Number(sid),
+        songId: Number(prevSong.id),
+        eventType: 'skip',
+        playedSeconds: playedSecs,
+        totalSeconds: totalSecs,
+        platform: (prevSong as any).platform || 'netease',
+      }).catch(() => {})
+    })
   }
 }
 
@@ -83,7 +103,11 @@ function handlePrev() {
   playerStore.prev()
   const song = playerStore.currentSong
   if (song?.audioUrl) {
-    audioPlayer.load(song.audioUrl).then(() => audioPlayer.play())
+    audioPlayer.load(song.audioUrl)
+      .then(() => audioPlayer.play())
+      .catch(() => {})
+  } else {
+    audioPlayer.stop()
   }
 }
 </script>

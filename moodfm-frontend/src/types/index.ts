@@ -31,6 +31,7 @@ export interface Song {
   bpm?: number
   tags?: string[]
   recommendReason?: string
+  urlSource?: string // "qqmusic" | "netease_fallback"
 }
 
 export interface RadioSession {
@@ -60,4 +61,5 @@ export interface SongVO {
   platformSongId?: string
   playUrl?: string
   recommendReason?: string
+  urlSource?: string // "qqmusic" | "netease_fallback"
 }

@@ -190,6 +190,76 @@ public class MusicApiClient {
         return urlMap;
     }
 
+    /**
+     * Validate a cookie by calling the platform's profile endpoint.
+     * Returns the platform username if valid, null otherwise.
+     */
+    public String validateCookie(String platform, String cookie) {
+        try {
+            String json = restClient
+                    .get()
+                    .uri("/{p}/user/profile", route(platform))
+                    .header("X-Cookie", cookie)
+                    .retrieve()
+                    .body(String.class);
+            JsonNode node = objectMapper.readTree(json);
+            if (node.path("valid").asBoolean(false)) {
+                return node.path("username").asText(null);
+            }
+        } catch (Exception e) {
+            log.warn("Cookie validation failed for platform {}: {}", platform, e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Send SMS verification code for phone-based platform login.
+     * Returns the ticket string used in the verify step.
+     */
+    public String sendPhoneCode(String platform, String phone) {
+        try {
+            String json = restClient
+                    .post()
+                    .uri("/{p}/phone/code", route(platform))
+                    .body(Map.of("phone", phone))
+                    .retrieve()
+                    .body(String.class);
+            JsonNode node = objectMapper.readTree(json);
+            if (node.path("code").asInt() == 200) {
+                return node.path("data").path("ticket").asText(null);
+            }
+        } catch (Exception e) {
+            log.error("Failed to send phone code for platform {}", platform, e);
+        }
+        return null;
+    }
+
+    /**
+     * Verify SMS code and retrieve cookie + username.
+     * Returns a two-element array: [cookie, username], or null on failure.
+     */
+    public String[] verifyPhoneCode(String platform, String phone, String code, String ticket) {
+        try {
+            String json = restClient
+                    .post()
+                    .uri("/{p}/phone/verify", route(platform))
+                    .body(Map.of("phone", phone, "code", code, "ticket", ticket))
+                    .retrieve()
+                    .body(String.class);
+            JsonNode node = objectMapper.readTree(json);
+            if (node.path("code").asInt() == 803) {
+                String cookie = node.path("cookie").asText(null);
+                String username = node.path("account").asText("");
+                if (cookie != null && !cookie.isBlank()) {
+                    return new String[]{cookie, username};
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to verify phone code for platform {}", platform, e);
+        }
+        return null;
+    }
+
     /** 获取用户歌单列表 */
     @CircuitBreaker(name = "music-adapter", fallbackMethod = "fallbackNode")
     public JsonNode getUserPlaylists(String platform, String cookie) {

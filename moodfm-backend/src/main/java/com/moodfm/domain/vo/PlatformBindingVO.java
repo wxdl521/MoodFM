@@ -14,4 +14,5 @@ public class PlatformBindingVO {
     private boolean valid;
     private boolean isDefault;
     private LocalDateTime lastValidatedAt;
+    private LocalDateTime expiresAt;
 }

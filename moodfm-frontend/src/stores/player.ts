@@ -10,7 +10,6 @@ export const usePlayerStore = defineStore('player', () => {
   const duration = ref(0)
   const volume = ref(1)
   const sessionId = ref<string | null>(null)
-  const skipStreak = ref(0)
   const trackNumber = ref(1)
 
   let lastSong: Song | null = null
@@ -66,14 +65,6 @@ export const usePlayerStore = defineStore('player', () => {
     sessionId.value = id
   }
 
-  function incrementSkipStreak() {
-    skipStreak.value++
-  }
-
-  function resetSkipStreak() {
-    skipStreak.value = 0
-  }
-
   return {
     currentSong,
     queue,
@@ -82,7 +73,6 @@ export const usePlayerStore = defineStore('player', () => {
     duration,
     volume,
     sessionId,
-    skipStreak,
     trackNumber,
     setSong,
     setQueue,
@@ -94,7 +84,5 @@ export const usePlayerStore = defineStore('player', () => {
     setProgress,
     setVolume,
     setSessionId,
-    incrementSkipStreak,
-    resetSkipStreak,
   }
 })

@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
   avatar_url VARCHAR(500),
   status TINYINT DEFAULT 1 COMMENT '1正常 0软删除',
   role VARCHAR(20) DEFAULT 'USER' COMMENT 'USER / ADMIN',
+  email_verified TINYINT(1) DEFAULT 0,
   login_fail_count INT DEFAULT 0,
   lock_until DATETIME,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -127,6 +128,65 @@ CREATE TABLE IF NOT EXISTS weekly_reports (
   UNIQUE KEY uk_user_week (user_id, week_start),
   CONSTRAINT fk_report_user FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 全局黑名单表（管理员维护，歌手/歌曲/关键词）
+CREATE TABLE IF NOT EXISTS global_blacklist (
+  id         BIGINT PRIMARY KEY AUTO_INCREMENT,
+  type       VARCHAR(20)  NOT NULL COMMENT 'artist | song | keyword',
+  value      VARCHAR(255) NOT NULL,
+  artist     VARCHAR(255),
+  scope      VARCHAR(50),
+  reason     VARCHAR(500),
+  added_by   VARCHAR(100),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_type (type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 管理员操作审计日志
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+  id         BIGINT PRIMARY KEY AUTO_INCREMENT,
+  operator   VARCHAR(100),
+  operation  VARCHAR(500),
+  module     VARCHAR(100),
+  detail     TEXT,
+  level      VARCHAR(20),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 管理员通知表
+CREATE TABLE IF NOT EXISTS admin_notification (
+  id            BIGINT PRIMARY KEY AUTO_INCREMENT,
+  title         VARCHAR(255) NOT NULL,
+  body          TEXT,
+  type          VARCHAR(50),
+  target_group  VARCHAR(100),
+  status        VARCHAR(20) DEFAULT 'draft' COMMENT 'draft | sent | scheduled',
+  scheduled_at  DATETIME,
+  sent_at       DATETIME,
+  sent_count    INT DEFAULT 0,
+  opened_count  INT DEFAULT 0,
+  created_by    VARCHAR(100),
+  created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- AI 场景模板表
+CREATE TABLE IF NOT EXISTS scene_template (
+  id         BIGINT PRIMARY KEY AUTO_INCREMENT,
+  `key`      VARCHAR(50)  NOT NULL UNIQUE,
+  name       VARCHAR(100) NOT NULL,
+  cn         VARCHAR(100),
+  active     TINYINT(1) DEFAULT 1,
+  songs      INT DEFAULT 0,
+  accuracy   VARCHAR(20),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 初始管理员账号（username: admin / password: admin）
+INSERT IGNORE INTO users (username, email, password_hash, status, role, email_verified)
+VALUES ('admin', 'admin@moodfm.local', '$2a$10$ZKY8PVloCYgIuWy7necs9.35K7rtDqFo5llFau6pKCjSYezWYHDV.', 1, 'ADMIN', 1);
 
 -- 反馈事件表
 CREATE TABLE IF NOT EXISTS feedback_events (

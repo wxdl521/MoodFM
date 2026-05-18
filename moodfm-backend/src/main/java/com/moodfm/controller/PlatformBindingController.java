@@ -61,6 +61,35 @@ public class PlatformBindingController {
         return R.ok();
     }
 
+    @Operation(summary = "发送手机号验证码（手机绑定第一步）")
+    @PostMapping("/{platform}/phone/code")
+    public R<Map<String, String>> sendPhoneCode(@PathVariable String platform,
+                                                 @RequestBody Map<String, String> body,
+                                                 @AuthenticationPrincipal UserDetails userDetails) {
+        Long userId = Long.parseLong(userDetails.getUsername());
+        String phone = body.get("phone");
+        if (phone == null || phone.isBlank()) {
+            return R.fail(400, "phone 不能为空");
+        }
+        String ticket = platformBindingService.sendPhoneCode(userId, platform, phone);
+        return R.ok(Map.of("ticket", ticket));
+    }
+
+    @Operation(summary = "手机验证码绑定（手机绑定第二步）")
+    @PostMapping("/{platform}/bind/phone")
+    public R<PlatformBindingVO> bindByPhone(@PathVariable String platform,
+                                             @RequestBody Map<String, String> body,
+                                             @AuthenticationPrincipal UserDetails userDetails) {
+        Long userId = Long.parseLong(userDetails.getUsername());
+        String phone = body.get("phone");
+        String code = body.get("code");
+        String ticket = body.get("ticket");
+        if (phone == null || code == null || ticket == null) {
+            return R.fail(400, "phone、code、ticket 不能为空");
+        }
+        return R.ok(platformBindingService.bindByPhone(userId, platform, phone, code, ticket));
+    }
+
     @Operation(summary = "设置默认平台")
     @PutMapping("/{platform}/default")
     public R<Void> setDefault(@PathVariable String platform,

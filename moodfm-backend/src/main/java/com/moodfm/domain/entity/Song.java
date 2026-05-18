@@ -25,9 +25,6 @@ public class Song {
     /** JSON: {genre, bpm, energy, language, valence} */
     private String features;
 
-    /** M2 阶段使用 */
-    private String qdrantPointId;
-
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 

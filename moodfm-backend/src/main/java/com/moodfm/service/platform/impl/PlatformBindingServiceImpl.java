@@ -92,7 +92,36 @@ public class PlatformBindingServiceImpl implements PlatformBindingService {
     @Override
     @CacheEvict(value = "platformMappings", key = "#userId")
     public void bindByCookie(Long userId, String platform, String cookie) {
-        saveBinding(userId, platform, cookie, null);
+        String username = musicApiClient.validateCookie(platform, cookie);
+        if (username == null) {
+            throw new BizException(ResultCode.COOKIE_INVALID);
+        }
+        saveBindingWithUsername(userId, platform, cookie, username);
+    }
+
+    @Override
+    @CacheEvict(value = "platformMappings", key = "#userId")
+    public String sendPhoneCode(Long userId, String platform, String phone) {
+        String ticket = musicApiClient.sendPhoneCode(platform, phone);
+        if (ticket == null) {
+            throw new BizException(ResultCode.PHONE_CODE_SEND_FAILED);
+        }
+        return ticket;
+    }
+
+    @Override
+    @CacheEvict(value = "platformMappings", key = "#userId")
+    public PlatformBindingVO bindByPhone(Long userId, String platform, String phone, String code, String ticket) {
+        String[] result = musicApiClient.verifyPhoneCode(platform, phone, code, ticket);
+        if (result == null) {
+            throw new BizException(ResultCode.PHONE_CODE_VERIFY_FAILED);
+        }
+        String cookie = result[0];
+        String username = result[1];
+        saveBindingWithUsername(userId, platform, cookie, username);
+        return toVO(bindingMapper.selectOne(new LambdaQueryWrapper<PlatformBinding>()
+                .eq(PlatformBinding::getUserId, userId)
+                .eq(PlatformBinding::getPlatform, platform)));
     }
 
     @Override
@@ -160,6 +189,11 @@ public class PlatformBindingServiceImpl implements PlatformBindingService {
     }
 
     private void saveBinding(Long userId, String platform, String cookie, JsonNode extra) {
+        String username = extra != null ? extra.path("account").asText(null) : null;
+        saveBindingWithUsername(userId, platform, cookie, username);
+    }
+
+    private void saveBindingWithUsername(Long userId, String platform, String cookie, String username) {
         String encryptedCookie = aesUtil.encrypt(cookie);
 
         PlatformBinding existing = bindingMapper.selectOne(new LambdaQueryWrapper<PlatformBinding>()
@@ -170,6 +204,9 @@ public class PlatformBindingServiceImpl implements PlatformBindingService {
             existing.setCookieEncrypted(encryptedCookie);
             existing.setIsValid(1);
             existing.setLastValidatedAt(LocalDateTime.now());
+            if (username != null && !username.isBlank()) {
+                existing.setPlatformUsername(username);
+            }
             bindingMapper.updateById(existing);
         } else {
             PlatformBinding binding = new PlatformBinding();
@@ -179,10 +216,8 @@ public class PlatformBindingServiceImpl implements PlatformBindingService {
             binding.setIsValid(1);
             binding.setIsDefault(0);
             binding.setLastValidatedAt(LocalDateTime.now());
-
-            if (extra != null) {
-                binding.setPlatformUserId(extra.path("userId").asText(null));
-                binding.setPlatformUsername(extra.path("account").asText(null));
+            if (username != null && !username.isBlank()) {
+                binding.setPlatformUsername(username);
             }
 
             // 如果是第一个绑定，设为默认
@@ -202,6 +237,7 @@ public class PlatformBindingServiceImpl implements PlatformBindingService {
                 .valid(b.getIsValid() == 1)
                 .isDefault(b.getIsDefault() == 1)
                 .lastValidatedAt(b.getLastValidatedAt())
+                .expiresAt(b.getExpiresAt())
                 .build();
     }
 }

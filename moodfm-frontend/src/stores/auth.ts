@@ -16,13 +16,14 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isLoggedIn = computed(() => !!token.value)
 
-  async function login(credentials: { email: string; password: string }) {
+  async function login(credentials: { account: string; password: string; rememberMe?: boolean }) {
     const res = await authApi.login(credentials)
-    // interceptor already unwrapped R<AuthResponse> → AuthResponse
-    token.value = res.token
+    // interceptor already unwrapped R<AuthResponse> → LoginVO
+    token.value = res.accessToken
     user.value = res.user
-    localStorage.setItem('moodfm_token', res.token)
+    localStorage.setItem('moodfm_token', res.accessToken)
     localStorage.setItem('moodfm_user', JSON.stringify(res.user))
+    if (res.refreshToken) localStorage.setItem('moodfm_refresh_token', res.refreshToken)
     return res
   }
 
@@ -31,11 +32,19 @@ export const useAuthStore = defineStore('auth', () => {
     return res
   }
 
-  function logout() {
+  async function logout() {
+    try {
+      if (token.value) {
+        await authApi.logout(token.value)
+      }
+    } catch {
+      // Ignore errors — still clear local state
+    }
     token.value = null
     user.value = null
     localStorage.removeItem('moodfm_token')
     localStorage.removeItem('moodfm_user')
+    localStorage.removeItem('moodfm_refresh_token')
     window.location.href = '/auth'
   }
 

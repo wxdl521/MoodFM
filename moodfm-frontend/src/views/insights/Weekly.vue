@@ -5,7 +5,7 @@
     <div style="position: sticky; top: 62px; z-index: 10; background: var(--bg); border-bottom: 1px solid var(--rule); padding: 0 56px; display: flex; align-items: center; justify-content: space-between; height: 52px;">
       <RouterLink to="/insights" class="btn-pill" style="text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">‹ Insights</RouterLink>
       <div class="meta desktop-only">WEEKLY REPORT · 周报</div>
-      <button class="btn" style="height: 36px; padding: 0 14px;" @click="handleShare">分享长图 →</button>
+      <button class="btn" style="height: 36px; padding: 0 14px;" :disabled="shareLoading" @click="handleShare">{{ shareLoading ? '生成中...' : '分享长图 →' }}</button>
     </div>
 
     <div v-if="loading" class="page-pad">
@@ -124,7 +124,7 @@
           导出一张可分享的长图，把这一周的"形状"留在朋友圈。
         </div>
         <div class="row" style="gap: 10px; justify-content: center; flex-wrap: wrap;">
-          <button class="btn" @click="handleShare">生成分享长图 →</button>
+          <button class="btn" :disabled="shareLoading" @click="handleShare">{{ shareLoading ? '生成中...' : '生成分享长图 →' }}</button>
         </div>
       </div>
     </div>
@@ -153,6 +153,7 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const currentWeekId = ref('')
 const reportRef = ref<HTMLElement | null>(null)
+const shareLoading = ref(false)
 
 const currentWeekLabel = computed(() => currentWeekId.value)
 
@@ -298,6 +299,8 @@ async function loadWeek(id: string) {
 async function handleShare() {
   const el = reportRef.value
   if (!el) return
+
+  shareLoading.value = true
   try {
     const canvas = await html2canvas(el, {
       backgroundColor: '#f4efe6',
@@ -316,6 +319,8 @@ async function handleShare() {
     URL.revokeObjectURL(url)
   } catch (e) {
     console.error('Share image generation failed:', e)
+  } finally {
+    shareLoading.value = false
   }
 }
 

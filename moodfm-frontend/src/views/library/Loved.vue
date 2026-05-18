@@ -53,8 +53,8 @@ onMounted(async () => {
       t: s.title,
       a: s.artist,
       al: s.album ?? '',
-      d: formatDuration(s.duration),
-      src: toPlatformLabel(s.platform),
+      d: formatDuration((s as any).durationSeconds ?? s.duration),
+      src: toPlatformLabel((s as any).platform ?? 'netease'),
       mood: 'calm',
       when: '',
     }))

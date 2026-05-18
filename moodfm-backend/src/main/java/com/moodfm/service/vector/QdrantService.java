@@ -13,8 +13,8 @@ import io.qdrant.client.grpc.Points.Vector;
 import io.qdrant.client.grpc.Points.Vectors;
 import io.qdrant.client.grpc.Points.WithPayloadSelector;
 import jakarta.annotation.PostConstruct;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -26,13 +26,13 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class QdrantService {
 
-    private final QdrantClient qdrantClient;
+    @Autowired(required = false)
+    private QdrantClient qdrantClient;
 
     private static final String COLLECTION = "songs";
-    private static final int VECTOR_DIM = 128;
+    private static final int VECTOR_DIM = 2048;
     private static final int SEARCH_DEFAULT_LIMIT = 20;
 
     @PostConstruct
@@ -164,26 +164,6 @@ public class QdrantService {
         } catch (Exception e) {
             log.warn("Qdrant search failed, returning empty results: {}", e.getMessage());
             return List.of();
-        }
-    }
-
-    /**
-     * Delete a song from the vector index.
-     */
-    public void deleteSong(Long songId) {
-        if (qdrantClient == null) {
-            log.debug("Qdrant client unavailable, skipping delete for song {}", songId);
-            return;
-        }
-        try {
-            PointId pointId = PointId.newBuilder()
-                    .setUuid(songIdToUuid(songId).toString())
-                    .build();
-
-            qdrantClient.deleteAsync(COLLECTION, List.of(pointId)).get();
-            log.debug("Deleted song {} from Qdrant", songId);
-        } catch (Exception e) {
-            log.warn("Failed to delete song {} from Qdrant: {}", songId, e.getMessage());
         }
     }
 

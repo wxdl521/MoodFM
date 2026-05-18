@@ -62,8 +62,12 @@
           <h1 class="display player-title">
             {{ songTitle }}<em style="opacity: .5">.</em>
           </h1>
-          <div style="font-family: var(--serif-cn); font-size: 24px; margin-top: 8px; opacity: .9">
-            {{ songArtist }}
+          <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
+            <div style="font-family: var(--serif-cn); font-size: 24px; opacity: .9">{{ songArtist }}</div>
+            <span v-if="player.currentSong?.urlSource === 'netease_fallback'"
+              style="font-family: var(--mono); font-size: 9px; letter-spacing: .12em; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.6); flex-shrink: 0; white-space: nowrap;">
+              via 网易云
+            </span>
           </div>
 
           <!-- AI "why this song" card -->
@@ -401,9 +405,18 @@ watch(showLyrics, (open) => {
   if (open && !lyricsLines.value.length) loadLyrics()
 })
 
-watch(() => player.currentSong?.id, () => {
+watch(() => player.currentSong?.id, async (songId) => {
   lyricsLines.value = []
-})
+  liked.value = false
+  if (songId) {
+    try {
+      const res = await playlistApi.isLiked(songId)
+      liked.value = res.liked
+    } catch {
+      // silent — liked state defaults to false on error
+    }
+  }
+}, { immediate: true })
 
 watch(activeLyricIdx, async (idx) => {
   if (!showLyrics.value || idx < 0 || !lyricsScrollEl.value) return
@@ -426,9 +439,12 @@ function handlePlayPause() {
   if (player.isPlaying) {
     audio.pause()
   } else {
-    // Try to resume; fall back to simulated progress
     if (player.currentSong?.audioUrl) {
-      audio.play()
+      if (audio.isReady.value) {
+        audio.play()
+      } else {
+        audio.load(player.currentSong.audioUrl).then(() => audio.play()).catch(() => {})
+      }
     } else {
       player.togglePlay()
       startSimProgress()
@@ -436,29 +452,62 @@ function handlePlayPause() {
   }
 }
 
-function handleNext() {
+// Shared: advance queue + load audio. Does NOT send feedback (callers handle that).
+function _advanceQueue() {
   player.next()
   const song = player.currentSong
   if (song?.audioUrl) {
-    audio.load(song.audioUrl).then(() => audio.play())
+    audio.load(song.audioUrl)
+      .then(() => audio.play())
+      .catch(() => { if (player.queue.length > 0) _advanceQueue() })
   } else {
+    audio.stop()
     player.setProgress(0)
   }
+}
+
+function _sendSkipFeedback(song: typeof player.currentSong, sid: string | null, playedSecs: number, totalSecs: number) {
+  if (!song?.id || !sid) return
+  import('@/api/client').then(({ default: apiClient }) => {
+    apiClient.post('/radio/feedback', {
+      sessionId: Number(sid),
+      songId: Number(song.id),
+      eventType: 'skip',
+      playedSeconds: playedSecs,
+      totalSeconds: totalSecs,
+      platform: (song as any).platform || 'netease',
+    }).catch(() => {})
+  })
+}
+
+function handleNext() {
+  const prevSong = player.currentSong
+  const sid = player.sessionId
+  const playedSecs = Math.round(audio.currentTime.value) || 0
+  const totalSecs = Math.round(audio.duration.value || player.duration) || 0
+  _advanceQueue()
+  _sendSkipFeedback(prevSong, sid, playedSecs, totalSecs)
 }
 
 function handlePrev() {
   player.prev()
   const song = player.currentSong
   if (song?.audioUrl) {
-    audio.load(song.audioUrl).then(() => audio.play())
+    audio.load(song.audioUrl).then(() => audio.play()).catch(() => {})
   } else {
     player.setProgress(0)
   }
 }
 
 function handleSkip() {
-  const skippedArtist = player.currentSong?.artist
-  handleNext()
+  const skippedSong = player.currentSong
+  const sid = player.sessionId
+  const playedSecs = Math.round(audio.currentTime.value) || 0
+  const totalSecs = Math.round(audio.duration.value || player.duration) || 0
+  const skippedArtist = skippedSong?.artist
+
+  _advanceQueue()
+  _sendSkipFeedback(skippedSong, sid, playedSecs, totalSecs)
 
   if (!skippedArtist) return
 
@@ -494,7 +543,7 @@ async function handleDislike() {
   const sid = player.sessionId
   if (song && sid) {
     try {
-      await radioApi.feedback({ songId: song.id, sessionId: sid, action: 'dislike' })
+      await radioApi.feedback({ songId: song.id, sessionId: sid, eventType: 'dislike' })
     } catch {
       // silent — don't block playback on feedback errors
     }
@@ -566,16 +615,29 @@ function formatTime(secs: number): string {
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 onMounted(() => {
   if (!player.currentSong) {
-    // No song loaded — redirect back to home per spec
     router.replace('/home')
     return
   }
   if (player.sessionId) ws.connect(player.sessionId)
-  if (player.currentSong.audioUrl && !player.isPlaying) {
-    audio.load(player.currentSong.audioUrl).then(() => audio.play())
-  } else if (!player.currentSong.audioUrl) {
-    // No real audio URL (dev/demo mode) — simulate progress
-    if (!player.isPlaying) player.togglePlay()
+  if (player.currentSong.audioUrl) {
+    // Load if: no Howl loaded yet, OR the loaded URL differs from the current song
+    // (new session). Skip reload only when the same URL is already loaded (back-nav to a paused song).
+    if (audio.loadedUrl.value !== player.currentSong.audioUrl) {
+      audio.load(player.currentSong.audioUrl)
+        .then(() => audio.play())
+        .catch(() => {
+          // URL failed (CORS / expired / no VIP) — skip to next song
+          if (player.queue.length > 0) {
+            handleNext()
+          } else {
+            player.setPlaying(true)
+            startSimProgress()
+          }
+        })
+    }
+  } else {
+    // No real audio URL — simulate progress
+    player.setPlaying(true)
     startSimProgress()
   }
 })

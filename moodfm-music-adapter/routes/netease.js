@@ -175,4 +175,36 @@ router.get('/simi/song', async (req, res) => {
   }
 })
 
+// 获取用户歌单列表
+router.get('/user/playlists', async (req, res) => {
+  try {
+    const cookie = getCookie(req)
+    if (!cookie) return res.status(401).json({ error: 'cookie required' })
+
+    const loginStatus = await getApi().login_status({ cookie })
+    const uid = loginStatus.body.data?.profile?.userId
+    if (!uid) return res.status(401).json({ error: 'invalid cookie' })
+
+    const result = await getApi().user_playlist({ uid, cookie, limit: 50 })
+    res.json({ code: 200, playlist: result.body.playlist || [] })
+  } catch (e) {
+    console.error('user/playlists error:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// 获取歌单所有曲目
+router.get('/playlist/tracks', async (req, res) => {
+  try {
+    const { id } = req.query
+    if (!id) return res.status(400).json({ error: 'id is required' })
+    const cookie = getCookie(req)
+    const result = await getApi().playlist_track_all({ id, cookie })
+    res.json({ code: 200, songs: result.body.songs || [] })
+  } catch (e) {
+    console.error('playlist/tracks error:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
 module.exports = router

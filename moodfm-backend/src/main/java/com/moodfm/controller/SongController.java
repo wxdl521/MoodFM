@@ -34,6 +34,13 @@ public class SongController {
         return R.ok(songService.getLikedSongs(uid(ud)));
     }
 
+    @Operation(summary = "查询红心状态")
+    @GetMapping("/{id}/liked")
+    public R<Map<String, Boolean>> isLiked(@PathVariable Long id,
+                                           @AuthenticationPrincipal UserDetails ud) {
+        return R.ok(Map.of("liked", songService.isLiked(uid(ud), id)));
+    }
+
     @Operation(summary = "切换红心状态")
     @PostMapping("/{id}/like")
     public R<Map<String, Boolean>> toggleLike(@PathVariable Long id,

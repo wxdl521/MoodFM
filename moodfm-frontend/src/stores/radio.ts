@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { radioApi } from '@/api/radio'
-import type { RadioSession, Feedback } from '@/types'
+import { usePlayerStore } from './player'
+import type { RadioSession } from '@/types'
 
 export const useRadioStore = defineStore('radio', () => {
   const session = ref<RadioSession | null>(null)
@@ -14,23 +15,45 @@ export const useRadioStore = defineStore('radio', () => {
     isLoading.value = true
     try {
       const res = await radioApi.startRadio(data)
-      // interceptor already unwrapped R<RadioSession> → RadioSession
-      session.value = res
-      return res
+      // res is RadioQueueVO: { sessionId, scene, moodSummary, songs, totalCount }
+      const player = usePlayerStore()
+      if (res.songs && res.songs.length > 0) {
+        player.setSessionId(String(res.sessionId))
+        const mapSong = (s: any) => ({
+          id: String(s.id),
+          title: s.title,
+          artist: s.artist,
+          album: s.album,
+          platform: s.platform || 'netease',
+          platformSongId: s.platformSongId || '',
+          duration: s.durationSeconds || s.duration || 0,
+          coverUrl: s.coverUrl,
+          audioUrl: s.playUrl || undefined,
+          recommendReason: s.recommendReason,
+          urlSource: s.urlSource,
+        })
+        const [first, ...rest] = res.songs
+        player.setSong(mapSong(first))
+        player.setQueue(rest.map(mapSong))
+        player.setPlaying(true)
+      }
+      session.value = { sessionId: String(res.sessionId), moodText: data.moodText, scene: res.scene, status: 'active', createdAt: new Date().toISOString() }
+      return session.value
     } finally {
       isLoading.value = false
     }
   }
 
-  async function sendFeedback(data: Feedback) {
-    const res = await radioApi.feedback(data)
-    return res
-  }
-
   async function fetchRecentSessions() {
     const res = await radioApi.getSessions(5)
-    recentSessions.value = res
-    return res
+    recentSessions.value = (res as any[]).map(r => ({
+      sessionId: String(r.id ?? r.sessionId ?? ''),
+      moodText:  r.rawInput ?? r.moodText ?? '',
+      scene:     r.scene ?? '',
+      status:    'ended' as const,
+      createdAt: r.startedAt ?? r.createdAt ?? '',
+    }))
+    return recentSessions.value
   }
 
   function setMoodText(t: string) {
@@ -41,5 +64,5 @@ export const useRadioStore = defineStore('radio', () => {
     scene.value = s
   }
 
-  return { session, moodText, scene, isLoading, recentSessions, startRadio, sendFeedback, fetchRecentSessions, setMoodText, setScene }
+  return { session, moodText, scene, isLoading, recentSessions, startRadio, fetchRecentSessions, setMoodText, setScene }
 })

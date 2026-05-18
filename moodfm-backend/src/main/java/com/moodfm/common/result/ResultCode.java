@@ -22,19 +22,16 @@ public enum ResultCode {
     // 验证码错误码 (11xx)
     INVALID_SMS_CODE(1101, "短信验证码错误或已过期"),
     INVALID_EMAIL_CODE(1102, "邮箱验证码错误或已过期"),
-    PHONE_NOT_VERIFIED(1103, "手机号未验证"),
-    EMAIL_NOT_VERIFIED(1104, "邮箱未验证"),
     OTP_TOO_MANY_ATTEMPTS(1105, "验证码尝试次数过多，请重新获取"),
 
     // 平台绑定错误码 (2xxx)
     PLATFORM_NOT_BOUND(2001, "音乐平台账号未绑定"),
     PLATFORM_COOKIE_INVALID(2002, "平台账号 Cookie 已失效，请重新绑定"),
-    QR_CODE_EXPIRED(2003, "二维码已过期，请重新获取"),
-    QR_CODE_WAITING(2004, "等待扫码"),
-    QR_CODE_SCANNED(2005, "已扫码，请在手机上确认"),
+    COOKIE_INVALID(2003, "Cookie 无效或已过期，请重新获取"),
+    PHONE_CODE_SEND_FAILED(2004, "短信验证码发送失败"),
+    PHONE_CODE_VERIFY_FAILED(2005, "短信验证码错误或已过期"),
 
     // AI 错误码 (3xxx)
-    MOOD_ANALYSIS_FAILED(3001, "心情分析失败，使用默认参数"),
     RECALL_FAILED(3002, "歌曲召回失败");
 
     private final int code;

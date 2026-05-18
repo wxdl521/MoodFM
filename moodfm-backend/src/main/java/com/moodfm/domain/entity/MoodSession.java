@@ -24,7 +24,5 @@ public class MoodSession {
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime startedAt;
 
-    private LocalDateTime endedAt;
-
     private Integer durationMinutes;
 }

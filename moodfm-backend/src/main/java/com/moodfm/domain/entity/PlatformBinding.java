@@ -17,8 +17,6 @@ public class PlatformBinding {
     /** netease / qqmusic / spotify */
     private String platform;
 
-    private String platformUserId;
-
     private String platformUsername;
 
     /** AES-256-GCM 加密后的 Cookie */

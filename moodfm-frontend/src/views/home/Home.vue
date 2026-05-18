@@ -121,12 +121,13 @@
         <!-- Today's recommendation -->
         <div class="home-section">
           <div class="meta" style="margin-bottom: 10px">今日推荐 · FOR THE HOUR</div>
-          <div class="recommend-card">
+          <div class="recommend-card" style="cursor:pointer;" @click="handleRecommendPlay">
             <div class="recommend-bg" />
             <div class="recommend-content">
               <div class="mono" style="font-size: 10px; letter-spacing: .16em; opacity: .85">{{ recommendTimeLabel }}</div>
               <div class="serif-en recommend-title">{{ recommendTitle }}</div>
               <div style="font-size: 14px; margin-top: 4px; opacity: .9">{{ recommendSubtitle }}</div>
+              <div class="mono" style="font-size: 10px; letter-spacing: .12em; opacity: .7; margin-top: 8px">▶ 立即播放</div>
             </div>
           </div>
         </div>
@@ -244,6 +245,15 @@ async function handleStartRadio() {
   }
 }
 
+async function handleRecommendPlay() {
+  const text = recommendTitle.value
+  radio.setMoodText(text)
+  try {
+    await radio.startRadio({ moodText: text, durationMinutes: sessionDuration.value || undefined })
+  } catch {}
+  router.push('/player')
+}
+
 async function handleJustPlay() {
   radio.setMoodText('随机')
   try {
@@ -254,11 +264,19 @@ async function handleJustPlay() {
   router.push('/player')
 }
 
-function resumeSession(session: RadioSession) {
+async function resumeSession(session: RadioSession) {
   radio.setMoodText(session.moodText)
   if (session.scene) radio.setScene(session.scene)
-  if (session.moodPreset) ui.setMoodPreset(session.moodPreset)
-  router.push('/player')
+  try {
+    await radio.startRadio({
+      moodText: session.moodText || '随机',
+      scene: session.scene || undefined,
+      durationMinutes: sessionDuration.value || undefined,
+    })
+    router.push('/player')
+  } catch {
+    // failed to load songs — stay on home
+  }
 }
 
 // ── Sessions ────────────────────────────────────────────────────────────────

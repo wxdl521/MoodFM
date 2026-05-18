@@ -16,4 +16,5 @@ public class SongVO {
     private String platformSongId;
     private String playUrl;
     private String recommendReason; // AI 推荐解释
+    private String urlSource; // "qqmusic" | "netease_fallback" — set when play URL comes from a different platform
 }

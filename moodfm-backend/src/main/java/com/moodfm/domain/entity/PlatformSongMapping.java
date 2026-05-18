@@ -17,6 +17,4 @@ public class PlatformSongMapping {
     private String platform;
 
     private String platformSongId;
-
-    private Integer available; // 1=可播放 0=下架
 }

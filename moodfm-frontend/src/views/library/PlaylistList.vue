@@ -14,13 +14,6 @@ interface PlaylistItem { id: string; t: string; en: string; n: number; m: number
 const lists = ref<PlaylistItem[]>([])
 const smartPlaylists = ref<SmartPlaylistSummary[]>([])
 
-const iconMap: Record<string, string> = {
-  heart: 'heart',
-  moon: 'moon',
-  zap: 'zap',
-  compass: 'compass',
-}
-
 function toPlatformLabel(p: string): string {
   return p === 'netease' ? '网易云' : p === 'qqmusic' ? 'QQ' : p
 }

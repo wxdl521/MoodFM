@@ -20,14 +20,18 @@ public class QdrantConfig {
     @Value("${qdrant.use-tls:false}")
     private boolean useTls;
 
+    @Value("${qdrant.enabled:true}")
+    private boolean enabled;
+
     @Bean
     public QdrantClient qdrantClient() {
+        if (!enabled) {
+            log.info("Qdrant disabled (qdrant.enabled=false). Vector search will be unavailable.");
+            return null;
+        }
         try {
             QdrantGrpcClient grpcClient = QdrantGrpcClient.newBuilder(host, port, useTls).build();
             QdrantClient client = new QdrantClient(grpcClient);
-
-            // Quick liveness check — if Qdrant is not reachable, log and still return client
-            // (calls will fail gracefully in QdrantService)
             log.info("Qdrant client initialized ({}:{})", host, port);
             return client;
         } catch (Exception e) {

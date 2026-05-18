@@ -14,6 +14,10 @@ public interface PlatformBindingService {
 
     void bindByCookie(Long userId, String platform, String cookie);
 
+    String sendPhoneCode(Long userId, String platform, String phone);
+
+    PlatformBindingVO bindByPhone(Long userId, String platform, String phone, String code, String ticket);
+
     void unbind(Long userId, String platform);
 
     List<PlatformBindingVO> listBindings(Long userId);

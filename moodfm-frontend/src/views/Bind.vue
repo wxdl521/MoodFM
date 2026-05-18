@@ -63,7 +63,10 @@
             <div class="row" style="margin-top: 16px; gap: 24px; padding-top: 16px; border-top: 1px dashed var(--rule);">
               <div>
                 <div class="meta" style="color: var(--ink-3);">状态</div>
-                <div :style="{ fontFamily: 'var(--mono)', fontSize: '13px', marginTop: '4px', color: 'var(--ink)' }">{{ p.status }}</div>
+                <div :style="{
+                  fontFamily: 'var(--mono)', fontSize: '13px', marginTop: '4px',
+                  color: p.expired ? '#e05252' : p.expiringSoon ? '#d4a017' : 'var(--ink)'
+                }">{{ p.status }}</div>
               </div>
             </div>
           </div>
@@ -116,15 +119,7 @@
           <div v-if="activeTab === 'qr'" style="text-align: center;">
             <div style="display: inline-block; position: relative; padding: 24px; border: 1px solid var(--rule); border-radius: 18px; background: var(--bg);">
               <div style="width: 200px; height: 200px; position: relative; background: #fff; padding: 8px;">
-                <svg viewBox="0 0 17 17" width="184" height="184">
-                  <rect v-for="cell in qrCells" :key="`${cell.x}-${cell.y}`"
-                    :x="cell.x" :y="cell.y" width="1" height="1" :fill="cell.color" />
-                  <g v-for="(corner, i) in finderCorners" :key="i">
-                    <rect :x="corner[0]" :y="corner[1]" width="7" height="7" fill="#000" />
-                    <rect :x="corner[0]+1" :y="corner[1]+1" width="5" height="5" fill="#fff" />
-                    <rect :x="corner[0]+2" :y="corner[1]+2" width="3" height="3" fill="#000" />
-                  </g>
-                </svg>
+                <img v-if="qrImageUrl" :src="qrImageUrl" alt="QR Code" style="width: 184px; height: 184px; display: block;" />
 
                 <Transition name="fade">
                   <div v-if="qrStatus === 'expired'"
@@ -151,7 +146,7 @@
               </span>
             </div>
 
-            <div v-if="qrStatus === 'waiting'" :style="{ marginTop: '8px', fontFamily: 'var(--mono)', fontSize: '13px', color: 'var(--ink-2)' }">
+            <div v-if="qrStatus === 'waiting' || qrStatus === 'scanned'" :style="{ marginTop: '8px', fontFamily: 'var(--mono)', fontSize: '13px', color: 'var(--ink-2)' }">
               {{ qrCountdown }}s 后过期 · refresh in {{ qrCountdown }}s
             </div>
 
@@ -254,15 +249,7 @@
             <div v-if="activeTab === 'qr'" style="text-align: center;">
               <div style="display: inline-block; position: relative; padding: 24px; border: 1px solid var(--rule); border-radius: 18px; background: var(--bg);">
                 <div style="width: 200px; height: 200px; position: relative; background: #fff; padding: 8px;">
-                  <svg viewBox="0 0 17 17" width="184" height="184">
-                    <rect v-for="cell in qrCells" :key="`m-${cell.x}-${cell.y}`"
-                      :x="cell.x" :y="cell.y" width="1" height="1" :fill="cell.color" />
-                    <g v-for="(corner, i) in finderCorners" :key="`mc-${i}`">
-                      <rect :x="corner[0]" :y="corner[1]" width="7" height="7" fill="#000" />
-                      <rect :x="corner[0]+1" :y="corner[1]+1" width="5" height="5" fill="#fff" />
-                      <rect :x="corner[0]+2" :y="corner[1]+2" width="3" height="3" fill="#000" />
-                    </g>
-                  </svg>
+                  <img v-if="qrImageUrl" :src="qrImageUrl" alt="QR Code" style="width: 184px; height: 184px; display: block;" />
 
                   <Transition name="fade">
                     <div v-if="qrStatus === 'expired'"
@@ -289,7 +276,7 @@
                 </span>
               </div>
 
-              <div v-if="qrStatus === 'waiting'" :style="{ marginTop: '8px', fontFamily: 'var(--mono)', fontSize: '13px', color: 'var(--ink-2)' }">
+              <div v-if="qrStatus === 'waiting' || qrStatus === 'scanned'" :style="{ marginTop: '8px', fontFamily: 'var(--mono)', fontSize: '13px', color: 'var(--ink-2)' }">
                 {{ qrCountdown }}s 后过期 · refresh in {{ qrCountdown }}s
               </div>
 
@@ -360,7 +347,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { platformApi } from '@/api/platform'
 
 const isMobile = ref(window.innerWidth < 768)
@@ -374,14 +361,14 @@ function handleResize() {
 onMounted(() => window.addEventListener('resize', handleResize))
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
-  if (qrTimer) clearInterval(qrTimer)
+  clearQrTimers()
   if (phoneTimer) clearInterval(phoneTimer)
 })
 
 const platforms = reactive([
-  { id: '网易云音乐', logo: '网', name: '网易云音乐', en: 'NETEASE CLOUD MUSIC', status: '未绑定', bound: false, disabled: false },
-  { id: 'QQ音乐', logo: 'Q', name: 'QQ 音乐', en: 'QQ MUSIC', status: '未绑定', bound: false, disabled: false },
-  { id: 'Bilibili', logo: 'B', name: 'Bilibili 音乐', en: 'BILIBILI MUSIC', status: '即将上线', bound: false, disabled: true },
+  { id: '网易云音乐', logo: '网', name: '网易云音乐', en: 'NETEASE CLOUD MUSIC', status: '未绑定', bound: false, disabled: false, expiringSoon: false, expired: false },
+  { id: 'QQ音乐', logo: 'Q', name: 'QQ 音乐', en: 'QQ MUSIC', status: '未绑定', bound: false, disabled: false, expiringSoon: false, expired: false },
+  { id: 'Bilibili', logo: 'B', name: 'Bilibili 音乐', en: 'BILIBILI MUSIC', status: '即将上线', bound: false, disabled: true, expiringSoon: false, expired: false },
 ])
 
 const tabs = [
@@ -399,57 +386,138 @@ function openModal(platformId: string) {
   refreshQr()
 }
 
+const PLATFORM_ID_MAP: Record<string, 'netease' | 'qqmusic'> = {
+  '网易云音乐': 'netease',
+  'QQ音乐': 'qqmusic',
+}
+
+function getPlatformId(name: string): 'netease' | 'qqmusic' | null {
+  return PLATFORM_ID_MAP[name] ?? null
+}
+
 const qrStatus = ref<'waiting' | 'scanned' | 'success' | 'expired'>('waiting')
 const qrCountdown = ref(90)
+const qrImageUrl = ref('')
+const qrKey = ref('')
 let qrTimer: ReturnType<typeof setInterval> | null = null
+let qrPollTimer: ReturnType<typeof setInterval> | null = null
 
-const qrCells = computed(() => {
-  const cells: { x: number; y: number; color: string }[] = []
-  for (let y = 0; y < 17; y++) {
-    for (let x = 0; x < 17; x++) {
-      const inCorner = (x < 7 && y < 7) || (x >= 10 && y < 7) || (x < 7 && y >= 10)
-      if (!inCorner) {
-        cells.push({ x, y, color: ((x * 3 + y * 7 + x * y) % 2 === 0) ? '#000' : '#fff' })
-      }
-    }
-  }
-  return cells
-})
-
-const finderCorners = [[0, 0], [10, 0], [0, 10]] as const
+function clearQrTimers() {
+  if (qrTimer) { clearInterval(qrTimer); qrTimer = null }
+  if (qrPollTimer) { clearInterval(qrPollTimer); qrPollTimer = null }
+}
 
 function startQrTimer() {
   if (qrTimer) clearInterval(qrTimer)
   qrTimer = setInterval(() => {
-    if (qrStatus.value !== 'waiting') return
+    if (qrStatus.value !== 'waiting' && qrStatus.value !== 'scanned') return
     qrCountdown.value--
     if (qrCountdown.value <= 0) {
       qrStatus.value = 'expired'
-      if (qrTimer) clearInterval(qrTimer)
+      clearQrTimers()
     }
   }, 1000)
 }
 
-function refreshQr() {
-  qrCountdown.value = 90
-  qrStatus.value = 'waiting'
-  startQrTimer()
+function startQrPolling(platform: string) {
+  if (qrPollTimer) clearInterval(qrPollTimer)
+  const platformId = getPlatformId(platform)
+  if (!platformId || !qrKey.value) return
+
+  qrPollTimer = setInterval(async () => {
+    try {
+      const res = await platformApi.checkQRStatus(platformId, qrKey.value)
+      if (res.status === 'scanned') {
+        qrStatus.value = 'scanned'
+      } else if (res.status === 'success') {
+        qrStatus.value = 'success'
+        clearQrTimers()
+        loadBindings()
+      } else if (res.status === 'expired') {
+        qrStatus.value = 'expired'
+        clearQrTimers()
+      } else if (res.status === 'error') {
+        qrStatus.value = 'expired'
+        clearQrTimers()
+      }
+    } catch {
+      // keep polling on transient errors
+    }
+  }, 2500)
 }
 
-onMounted(startQrTimer)
+async function refreshQr() {
+  clearQrTimers()
+  qrCountdown.value = 90
+  qrStatus.value = 'waiting'
+  qrImageUrl.value = ''
+
+  const platformId = getPlatformId(activePlatform.value)
+  if (!platformId) return
+
+  try {
+    const res = await platformApi.generateQR(platformId)
+    qrKey.value = res.key
+    qrImageUrl.value = res.qrimg
+    startQrTimer()
+    startQrPolling(activePlatform.value)
+  } catch {
+    qrStatus.value = 'expired'
+  }
+}
+
+function daysUntil(dateStr?: string): number | null {
+  if (!dateStr) return null
+  const diff = new Date(dateStr).getTime() - Date.now()
+  return Math.ceil(diff / (1000 * 60 * 60 * 24))
+}
+
+async function loadBindings() {
+  try {
+    const bindings = await platformApi.getBindings()
+    for (const b of bindings) {
+      const p = platforms.find(pp => PLATFORM_ID_MAP[pp.id] === b.platform)
+      if (p) {
+        const days = daysUntil(b.expiresAt)
+        p.expired = !b.valid
+        p.expiringSoon = b.valid && days !== null && days <= 7 && days >= 0
+        if (!b.valid) {
+          p.bound = false
+          p.status = 'Cookie 已过期，请重新绑定'
+        } else if (p.expiringSoon && days !== null) {
+          p.bound = true
+          p.status = b.platformUsername ? `已绑定 · ${b.platformUsername} · ${days}天后过期` : `已绑定 · ${days}天后过期`
+        } else {
+          p.bound = true
+          p.status = b.platformUsername ? `已绑定 · ${b.platformUsername}` : '已绑定'
+        }
+      }
+    }
+  } catch {}
+}
+
+onMounted(loadBindings)
 
 const phone = ref('')
 const phoneCode = ref('')
 const phoneCountdown = ref(0)
 const phoneLoading = ref(false)
 const phoneError = ref('')
+const phoneTicket = ref('')
 let phoneTimer: ReturnType<typeof setInterval> | null = null
 
 async function sendPhoneCode() {
   if (phoneCountdown.value > 0 || !phone.value.trim()) return
+  const pid = getPlatformId(activePlatform.value)
+  if (!pid) return
+  phoneError.value = ''
   try {
-    await platformApi.sendPhoneCode(activePlatform.value, phone.value.trim())
-  } catch {}
+    const res = await platformApi.sendPhoneCode(pid, phone.value.trim())
+    phoneTicket.value = res.ticket
+  } catch (e: any) {
+    phoneError.value = e?.response?.data?.message || e?.message || '短信发送失败，请重试'
+    return
+  }
   phoneCountdown.value = 60
   phoneTimer = setInterval(() => {
     phoneCountdown.value--
@@ -464,9 +532,14 @@ async function submitPhone() {
   phoneError.value = ''
   if (!phone.value.trim()) { phoneError.value = '请输入手机号'; return }
   if (!phoneCode.value.trim()) { phoneError.value = '请输入验证码'; return }
+  if (!phoneTicket.value) { phoneError.value = '请先获取验证码'; return }
+  const pid = getPlatformId(activePlatform.value)
+  if (!pid) return
   phoneLoading.value = true
   try {
-    await platformApi.bindPhone(activePlatform.value, { phone: phone.value.trim(), code: phoneCode.value.trim() })
+    await platformApi.bindPhone(pid, { phone: phone.value.trim(), code: phoneCode.value.trim(), ticket: phoneTicket.value })
+    phoneTicket.value = ''
+    loadBindings()
   } catch (e: any) {
     phoneError.value = e?.response?.data?.message || e?.message || '绑定失败，请重试'
   } finally {
@@ -481,9 +554,12 @@ const cookieError = ref('')
 async function submitCookie() {
   cookieError.value = ''
   if (!cookieValue.value.trim()) { cookieError.value = '请粘贴 Cookie 内容'; return }
+  const pid = getPlatformId(activePlatform.value)
+  if (!pid) return
   cookieLoading.value = true
   try {
-    await platformApi.bindCookie(activePlatform.value, cookieValue.value.trim())
+    await platformApi.bindCookie(pid, cookieValue.value.trim())
+    loadBindings()
   } catch (e: any) {
     cookieError.value = e?.response?.data?.message || e?.message || '验证失败，请检查 Cookie 是否有效'
   } finally {

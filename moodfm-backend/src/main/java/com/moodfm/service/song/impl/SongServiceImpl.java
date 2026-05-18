@@ -8,10 +8,12 @@ import com.moodfm.common.util.MusicResponseParser;
 import com.moodfm.domain.entity.FeedbackEvent;
 import com.moodfm.domain.entity.PlatformBinding;
 import com.moodfm.domain.entity.PlatformSongMapping;
+import com.moodfm.domain.entity.Song;
 import com.moodfm.domain.vo.LyricLineVO;
 import com.moodfm.domain.vo.SongVO;
 import com.moodfm.mapper.FeedbackEventMapper;
 import com.moodfm.mapper.PlatformSongMappingMapper;
+import com.moodfm.mapper.SongMapper;
 import com.moodfm.service.platform.PlatformBindingService;
 import com.moodfm.service.song.SongService;
 import lombok.RequiredArgsConstructor;
@@ -21,8 +23,11 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -33,19 +38,65 @@ public class SongServiceImpl implements SongService {
     private final SongApiClient songApiClient;
     private final FeedbackEventMapper feedbackEventMapper;
     private final PlatformSongMappingMapper platformSongMappingMapper;
+    private final SongMapper songMapper;
     private final AesUtil aesUtil;
 
     @Override
     public List<SongVO> getLikedSongs(Long userId) {
         try {
-            PlatformBinding b = bindingService.getDefaultBinding(userId);
-            String cookie = aesUtil.decrypt(b.getCookieEncrypted());
-            JsonNode data = songApiClient.getUserLikedSongs(b.getPlatform(), cookie);
-            return MusicResponseParser.parseSongs(data, b.getPlatform());
+            List<FeedbackEvent> likes = feedbackEventMapper.selectList(
+                    new LambdaQueryWrapper<FeedbackEvent>()
+                            .eq(FeedbackEvent::getUserId, userId)
+                            .eq(FeedbackEvent::getEventType, "like")
+                            .isNotNull(FeedbackEvent::getSongId)
+                            .orderByDesc(FeedbackEvent::getCreatedAt));
+            if (likes.isEmpty()) return List.of();
+
+            List<Long> songIds = likes.stream()
+                    .map(FeedbackEvent::getSongId)
+                    .distinct()
+                    .collect(Collectors.toList());
+
+            List<Song> songs = songMapper.selectBatchIds(songIds);
+            Map<Long, Song> songMap = songs.stream()
+                    .collect(Collectors.toMap(Song::getId, s -> s));
+
+            List<PlatformSongMapping> mappings = platformSongMappingMapper.selectList(
+                    new LambdaQueryWrapper<PlatformSongMapping>()
+                            .in(PlatformSongMapping::getSongId, songIds));
+            Map<Long, PlatformSongMapping> mappingMap = mappings.stream()
+                    .collect(Collectors.toMap(PlatformSongMapping::getSongId, m -> m, (a, b) -> a));
+
+            return songIds.stream()
+                    .map(songMap::get)
+                    .filter(Objects::nonNull)
+                    .map(song -> {
+                        PlatformSongMapping mapping = mappingMap.get(song.getId());
+                        return SongVO.builder()
+                                .id(song.getId())
+                                .title(song.getTitle())
+                                .artist(song.getArtist())
+                                .album(song.getAlbum())
+                                .durationSeconds(song.getDurationSeconds())
+                                .coverUrl(song.getCoverUrl())
+                                .platform(mapping != null ? mapping.getPlatform() : null)
+                                .platformSongId(mapping != null ? mapping.getPlatformSongId() : null)
+                                .build();
+                    })
+                    .collect(Collectors.toList());
         } catch (Exception e) {
             log.warn("getLikedSongs failed for user {}", userId, e);
             return List.of();
         }
+    }
+
+    @Override
+    public boolean isLiked(Long userId, Long songId) {
+        return feedbackEventMapper.selectOne(new LambdaQueryWrapper<FeedbackEvent>()
+                .eq(FeedbackEvent::getUserId, userId)
+                .eq(FeedbackEvent::getSongId, songId)
+                .eq(FeedbackEvent::getEventType, "like")
+                .last("LIMIT 1")) != null;
     }
 
     @Override

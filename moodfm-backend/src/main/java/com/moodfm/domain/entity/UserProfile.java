@@ -20,11 +20,9 @@ public class UserProfile {
     /** JSON 数组，e.g. ["中文","English"] */
     private String languagePreferences;
 
-    private String artistWeights;
     private String blacklistArtists;
     private String blacklistSongs;
     private String blacklistKeywords;
-    private String qdrantUserVectorId;
 
     /** JSON 对象，通知偏好 e.g. {"weeklyReport":true,"cookieExpiry":true,"newFeatures":false} */
     private String notificationPrefs;

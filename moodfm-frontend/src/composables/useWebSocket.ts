@@ -1,17 +1,10 @@
-import { ref, onUnmounted } from 'vue'
+import { onUnmounted } from 'vue'
 import { Client, type IMessage } from '@stomp/stompjs'
 import { usePlayerStore } from '@/stores/player'
 import type { Song } from '@/types'
 
-interface PlayEvent {
-  type: string
-  songId: string
-  timestamp: number
-}
-
 export function useWebSocket() {
   const playerStore = usePlayerStore()
-  const isConnected = ref(false)
 
   let client: Client | null = null
   let currentSessionId: string | null = null
@@ -31,7 +24,6 @@ export function useWebSocket() {
       brokerURL,
       reconnectDelay: 5000,
       onConnect() {
-        isConnected.value = true
         client!.subscribe(
           `/topic/radio/${sessionId}`,
           (message: IMessage) => {
@@ -50,11 +42,9 @@ export function useWebSocket() {
         )
       },
       onDisconnect() {
-        isConnected.value = false
       },
       onStompError(frame) {
         console.error('[WS] STOMP error', frame)
-        isConnected.value = false
       },
     })
 
@@ -66,16 +56,7 @@ export function useWebSocket() {
       client.deactivate()
       client = null
     }
-    isConnected.value = false
     currentSessionId = null
-  }
-
-  function sendPlayEvent(event: PlayEvent) {
-    if (!client?.active || !currentSessionId) return
-    client.publish({
-      destination: `/app/radio/${currentSessionId}/event`,
-      body: JSON.stringify(event),
-    })
   }
 
   onUnmounted(() => {
@@ -83,9 +64,7 @@ export function useWebSocket() {
   })
 
   return {
-    isConnected,
     connect,
     disconnect,
-    sendPlayEvent,
   }
 }

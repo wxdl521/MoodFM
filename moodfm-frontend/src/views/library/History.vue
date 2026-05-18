@@ -18,6 +18,8 @@ const days = ref<DayGroup[]>([])
 const page = ref(1)
 const total = ref(0)
 const scene = ref<string | null>(null)
+const startDate = ref<string>('')
+const endDate = ref<string>('')
 const sentinel = ref<HTMLElement | null>(null)
 
 const SCENE_OPTIONS = [
@@ -91,6 +93,8 @@ let allItems: any[] = []
 async function loadPage(p: number, append: boolean) {
   const params: Record<string, any> = { page: p, pageSize: 20 }
   if (scene.value) params.scene = scene.value
+  if (startDate.value) params.startDate = startDate.value
+  if (endDate.value) params.endDate = endDate.value
   const result = await historyApi.list(params as any)
   const items = (result as any).items ?? []
   total.value = (result as any).total ?? 0
@@ -142,6 +146,18 @@ function selectScene(val: string | null) {
   loadInitial()
 }
 
+function clearFilters() {
+  scene.value = null
+  startDate.value = ''
+  endDate.value = ''
+  showFilter.value = false
+  loadInitial()
+}
+
+function onDateChange() {
+  loadInitial()
+}
+
 let observer: IntersectionObserver | null = null
 
 onMounted(() => {
@@ -159,26 +175,53 @@ onUnmounted(() => {
 
 <template>
   <div style="min-height:100vh;background:var(--bg);padding-bottom:80px;">
-    <div style="position:sticky;top:0;z-index:5;background:var(--bg);padding:22px 56px;
-                border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center;">
-      <button class="btn-pill" @click="router.back()">← Home</button>
-      <div class="meta">SECTION VII · HISTORY · 历史记录</div>
-      <div style="position:relative;">
-        <button class="btn-pill" @click="showFilter = !showFilter">
-          {{ scene ?? '筛选' }}
-        </button>
-        <div v-if="showFilter" style="position:absolute;right:0;top:36px;background:var(--paper);border:1px solid var(--rule);
-                    border-radius:12px;min-width:120px;z-index:10;overflow:hidden;">
-          <button
-            v-for="opt in SCENE_OPTIONS"
-            :key="opt.label"
-            style="display:block;width:100%;padding:10px 16px;border:none;background:transparent;
-                   text-align:left;font-family:var(--serif-cn);font-size:14px;cursor:pointer;
-                   border-bottom:1px solid var(--rule);"
-            :style="{ color: scene === opt.value ? 'var(--ink)' : 'var(--ink-2)', fontWeight: scene === opt.value ? 600 : 400 }"
-            @click="selectScene(opt.value)"
-          >{{ opt.label }}</button>
+    <div style="position:sticky;top:0;z-index:5;background:var(--bg);
+                border-bottom:1px solid var(--rule);">
+      <div style="padding:22px 56px;display:flex;justify-content:space-between;align-items:center;">
+        <button class="btn-pill" @click="router.back()">← Home</button>
+        <div class="meta">SECTION VII · HISTORY · 历史记录</div>
+        <div style="position:relative;">
+          <button class="btn-pill" @click="showFilter = !showFilter">
+            {{ scene ?? '场景' }}
+          </button>
+          <div v-if="showFilter" style="position:absolute;right:0;top:36px;background:var(--paper);border:1px solid var(--rule);
+                      border-radius:12px;min-width:120px;z-index:10;overflow:hidden;">
+            <button
+              v-for="opt in SCENE_OPTIONS"
+              :key="opt.label"
+              style="display:block;width:100%;padding:10px 16px;border:none;background:transparent;
+                     text-align:left;font-family:var(--serif-cn);font-size:14px;cursor:pointer;
+                     border-bottom:1px solid var(--rule);"
+              :style="{ color: scene === opt.value ? 'var(--ink)' : 'var(--ink-2)', fontWeight: scene === opt.value ? 600 : 400 }"
+              @click="selectScene(opt.value)"
+            >{{ opt.label }}</button>
+          </div>
         </div>
+      </div>
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label class="filter-label">日期范围</label>
+          <input
+            type="date"
+            class="filter-date"
+            :value="startDate"
+            placeholder="开始日期"
+            @change="startDate = ($event.target as HTMLInputElement).value; onDateChange()"
+          />
+          <span class="filter-sep">—</span>
+          <input
+            type="date"
+            class="filter-date"
+            :value="endDate"
+            placeholder="结束日期"
+            @change="endDate = ($event.target as HTMLInputElement).value; onDateChange()"
+          />
+        </div>
+        <button
+          v-if="scene || startDate || endDate"
+          class="btn-pill filter-clear"
+          @click="clearFilters()"
+        >清除筛选</button>
       </div>
     </div>
 
@@ -186,7 +229,13 @@ onUnmounted(() => {
       <div class="meta">A WEEK IN PLAYBACK</div>
       <h1 class="display" style="font-size:108px;margin:10px 0 0;">What you <em>heard</em>.</h1>
       <div class="display-cn" style="font-size:28px;color:var(--ink-2);margin-bottom:36px;">
-        {{ scene ? `场景：${scene}` : '这一周，你听过的每一首' }}
+        <template v-if="scene || startDate || endDate">
+          <template v-if="scene">场景：{{ scene }}</template>
+          <template v-if="startDate || endDate">
+            {{ scene ? ' · ' : '' }}{{ startDate || '…' }} — {{ endDate || '…' }}
+          </template>
+        </template>
+        <template v-else>这一周，你听过的每一首</template>
       </div>
 
       <div v-if="loading" class="meta" style="color:var(--ink-3);">加载中…</div>
@@ -230,3 +279,62 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.filter-bar {
+  padding: 10px 56px 14px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.filter-label {
+  font-family: var(--serif-cn);
+  font-size: 13px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.filter-date {
+  font-family: var(--serif-cn);
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  outline: none;
+  cursor: pointer;
+}
+.filter-date:focus {
+  border-color: var(--ink-3);
+}
+.filter-sep {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.filter-clear {
+  font-size: 12px;
+  padding: 5px 12px;
+  margin-left: auto;
+}
+@media (max-width: 640px) {
+  .filter-bar {
+    padding: 10px 20px 14px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .filter-group {
+    flex-wrap: wrap;
+  }
+  .filter-clear {
+    margin-left: 0;
+    align-self: flex-end;
+  }
+}
+</style>

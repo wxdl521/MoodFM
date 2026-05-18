@@ -119,7 +119,7 @@ public interface PlayRecordMapper extends BaseMapper<PlayRecord> {
           AND pr.played_at >= DATE_SUB(NOW(), INTERVAL #{days} DAY)
           AND s.features IS NOT NULL
           AND JSON_EXTRACT(s.features, '$.genre') IS NOT NULL
-        GROUP BY JSON_EXTRACT(s.features, '$.genre')
+        GROUP BY JSON_UNQUOTE(JSON_EXTRACT(s.features, '$.genre'))
         ORDER BY cnt DESC
         LIMIT 8
         """)
@@ -137,7 +137,7 @@ public interface PlayRecordMapper extends BaseMapper<PlayRecord> {
           AND pr.played_at <  #{weekEnd}
           AND s.features IS NOT NULL
           AND JSON_EXTRACT(s.features, '$.genre') IS NOT NULL
-        GROUP BY JSON_EXTRACT(s.features, '$.genre')
+        GROUP BY JSON_UNQUOTE(JSON_EXTRACT(s.features, '$.genre'))
         ORDER BY cnt DESC
         LIMIT 8
         """)
@@ -203,12 +203,12 @@ public interface PlayRecordMapper extends BaseMapper<PlayRecord> {
 
     @Select("""
         SELECT s.title, s.artist, COUNT(*) AS playCount
-        FROM play_records pr
-        JOIN songs s ON pr.song_id = s.id
-        WHERE pr.user_id = #{userId}
-          AND pr.action = 'liked'
-          AND pr.played_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-        GROUP BY pr.song_id, s.title, s.artist
+        FROM feedback_events fe
+        JOIN songs s ON fe.song_id = s.id
+        WHERE fe.user_id = #{userId}
+          AND fe.event_type = 'like'
+          AND fe.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        GROUP BY fe.song_id, s.title, s.artist
         ORDER BY playCount DESC
         """)
     List<Map<String, Object>> selectWeeklyLoves(
@@ -262,8 +262,56 @@ public interface PlayRecordMapper extends BaseMapper<PlayRecord> {
     @Select("SELECT COALESCE(SUM(played_seconds), 0) FROM play_records")
     long sumAllPlayedSeconds();
 
+    @Select("""
+        SELECT DATE(played_at) AS date,
+               COUNT(DISTINCT user_id) AS dau
+        FROM play_records
+        WHERE played_at >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+        GROUP BY DATE(played_at)
+        ORDER BY date
+        """)
+    List<Map<String, Object>> selectDailyDau(@Param("days") int days);
+
     @Delete("DELETE FROM play_records WHERE user_id = #{userId}")
     void deleteByUserId(@Param("userId") Long userId);
+
+    /* ── Admin Analytics Queries ───────────────────────────────────── */
+
+    @Select("""
+        SELECT JSON_UNQUOTE(JSON_EXTRACT(s.features, '$.genre')) AS genre,
+               COUNT(*) AS cnt
+        FROM play_records pr
+        JOIN songs s ON pr.song_id = s.id
+        WHERE pr.played_at >= DATE_SUB(NOW(), INTERVAL #{days} DAY)
+          AND s.features IS NOT NULL
+          AND JSON_EXTRACT(s.features, '$.genre') IS NOT NULL
+          AND JSON_UNQUOTE(JSON_EXTRACT(s.features, '$.genre')) != 'null'
+        GROUP BY JSON_UNQUOTE(JSON_EXTRACT(s.features, '$.genre'))
+        ORDER BY cnt DESC
+        LIMIT 8
+        """)
+    List<Map<String, Object>> selectAdminGenreCounts(@Param("days") int days);
+
+    @Select("""
+        SELECT platform, COUNT(*) AS cnt
+        FROM play_records
+        WHERE played_at >= DATE_SUB(NOW(), INTERVAL #{days} DAY)
+          AND platform IS NOT NULL
+        GROUP BY platform
+        ORDER BY cnt DESC
+        """)
+    List<Map<String, Object>> selectAdminPlatformCounts(@Param("days") int days);
+
+    @Select("""
+        SELECT s.title, s.artist, COUNT(*) AS playCount
+        FROM play_records pr
+        JOIN songs s ON pr.song_id = s.id
+        WHERE pr.played_at >= DATE_SUB(NOW(), INTERVAL #{days} DAY)
+        GROUP BY pr.song_id, s.title, s.artist
+        ORDER BY playCount DESC
+        LIMIT 5
+        """)
+    List<Map<String, Object>> selectAdminTopSongs(@Param("days") int days);
 
     @Select("""
         SELECT COUNT(DISTINCT song_id)                               AS tracks,

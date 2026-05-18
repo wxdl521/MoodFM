@@ -78,16 +78,8 @@ public class JwtUtil {
         return Long.parseLong(parseToken(token).getSubject());
     }
 
-    public String getJti(String token) {
-        return parseToken(token).getId();
-    }
-
     public boolean isAccessToken(String token) {
         return "access".equals(parseToken(token).get("type", String.class));
-    }
-
-    public boolean isExpired(String token) {
-        return parseToken(token).getExpiration().before(new Date());
     }
 
     /**

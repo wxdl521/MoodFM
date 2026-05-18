@@ -21,6 +21,10 @@ public class CacheConfig {
                             .maximumSize("songs".equals(name) ? 50_000 : 5_000)
                             .expireAfterWrite(1, TimeUnit.HOURS)
                             .build();
+                    case "embeddings" -> Caffeine.newBuilder()
+                            .maximumSize(10_000)
+                            .expireAfterWrite(24, TimeUnit.HOURS)
+                            .build();
                     default -> // "users" and others: 10 min TTL
                             Caffeine.newBuilder()
                             .maximumSize(10_000)

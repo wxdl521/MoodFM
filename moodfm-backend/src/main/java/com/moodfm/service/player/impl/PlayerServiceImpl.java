@@ -60,6 +60,7 @@ public class PlayerServiceImpl implements PlayerService {
     private final ChatClient chatClient;
     private final EmbeddingService embeddingService;
     private final QdrantService qdrantService;
+    private final GlobalBlacklistMapper globalBlacklistMapper;
 
     /** Virtual Thread executor for background tasks (Feature 2: queue auto-refill) */
     private final java.util.concurrent.ExecutorService bgExecutor = Executors.newVirtualThreadPerTaskExecutor();
@@ -105,6 +106,9 @@ public class PlayerServiceImpl implements PlayerService {
 
         // 5. AI 重排 + 生成推荐理由
         List<SongVO> ranked = rankWithAI(candidates, moodParams);
+
+        // 5.5 批量获取播放地址
+        enrichWithPlayUrls(ranked, platform, cookie);
 
         // 6. 持久化歌曲 + 平台映射（Feature 3 前置）
         persistSongs(ranked, platform);
@@ -220,6 +224,9 @@ public class PlayerServiceImpl implements PlayerService {
         // 7. AI 重排
         List<SongVO> ranked = rankWithAI(candidates, moodParams);
 
+        // 7.5 批量获取播放地址
+        enrichWithPlayUrls(ranked, platform, cookie);
+
         // 8. 持久化 + 存入 Redis 队列
         persistSongs(ranked, platform);
 
@@ -297,8 +304,51 @@ public class PlayerServiceImpl implements PlayerService {
         PlatformBinding binding = platformBindingService.getValidBinding(userId, platform);
         String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
         String url = musicApiClient.getSongUrl(platform, songId, cookie);
+        if (url != null && !url.isBlank()) return url;
+
+        // Fallback: look up the song in DB and try Netease
+        if ("qqmusic".equals(platform)) {
+            url = fallbackToNetease(songId, null, null, null);
+        }
         if (url == null || url.isBlank()) throw new BizException(ResultCode.RECALL_FAILED, "获取播放地址失败");
         return url;
+    }
+
+    /**
+     * Try to get a play URL from Netease by searching the song title + artist.
+     * Returns null if the fallback also fails.
+     */
+    private String fallbackToNetease(String qqSongId, String title, String artist, String cookie) {
+        try {
+            // If title/artist not provided, look up from DB via platform mapping
+            if ((title == null || title.isBlank()) && qqSongId != null) {
+                PlatformSongMapping mapping = platformSongMappingMapper.selectOne(
+                        new LambdaQueryWrapper<PlatformSongMapping>()
+                                .eq(PlatformSongMapping::getPlatformSongId, qqSongId)
+                                .eq(PlatformSongMapping::getPlatform, "qqmusic")
+                                .last("LIMIT 1"));
+                if (mapping != null) {
+                    Song song = songMapper.selectById(mapping.getSongId());
+                    if (song != null) {
+                        title = song.getTitle();
+                        artist = song.getArtist();
+                    }
+                }
+            }
+            if (title == null || title.isBlank()) return null;
+
+            String query = title + (artist != null && !artist.isBlank() ? " " + artist : "");
+            List<SongVO> hits = fetchSearch("netease", query, 5);
+            if (hits.isEmpty()) return null;
+
+            String neteaseId = hits.get(0).getPlatformSongId();
+            if (neteaseId == null) return null;
+
+            return musicApiClient.getSongUrl("netease", neteaseId, null);
+        } catch (Exception e) {
+            log.warn("Netease fallback failed for QQ song {}", qqSongId, e);
+            return null;
+        }
     }
 
     // ===================== Feature 1: 动态重排 =====================
@@ -354,6 +404,9 @@ public class PlayerServiceImpl implements PlayerService {
             List<SongVO> ranked = rankWithAI(fresh, mood);
             List<SongVO> nextBatch = ranked.stream().limit(RERANK_NEXT_N).collect(Collectors.toList());
 
+            // 批量获取播放地址
+            enrichWithPlayUrls(nextBatch, platform, cookie);
+
             // 持久化新歌曲
             persistSongs(nextBatch, platform);
 
@@ -395,6 +448,9 @@ public class PlayerServiceImpl implements PlayerService {
                     .collect(Collectors.toList());
 
             if (fresh.isEmpty()) return;
+
+            // 批量获取播放地址
+            enrichWithPlayUrls(fresh, platform, cookie);
 
             persistSongs(fresh, platform);
 
@@ -482,6 +538,9 @@ public class PlayerServiceImpl implements PlayerService {
         if (userId != null) {
             deduped = filterBlacklistKeywords(userId, deduped);
         }
+
+        // Feature 4c: 全局黑名单过滤（管理员设置，对所有用户生效）
+        deduped = filterGlobalBlacklist(deduped);
 
         return deduped.stream().limit(60).collect(Collectors.toList());
     }
@@ -598,6 +657,54 @@ public class PlayerServiceImpl implements PlayerService {
         return candidates;
     }
 
+    // ===================== Feature 4c: 全局黑名单过滤 =====================
+
+    /**
+     * 从 global_blacklist 表加载管理员设置的黑名单，过滤掉命中的歌曲。
+     * 支持三种类型：artist（精确艺术家名）、song（精确歌曲标题）、keyword（子串匹配）。
+     * 对所有用户生效，无需 Redis 缓存（表数据量小，type 列有索引）。
+     */
+    private List<SongVO> filterGlobalBlacklist(List<SongVO> candidates) {
+        try {
+            List<GlobalBlacklist> blacklist = globalBlacklistMapper.selectList(null);
+            if (blacklist.isEmpty()) return candidates;
+
+            Set<String> bannedArtists  = new HashSet<>();
+            Set<String> bannedSongs    = new HashSet<>();
+            List<String> bannedKeywords = new ArrayList<>();
+
+            for (GlobalBlacklist entry : blacklist) {
+                String v = entry.getValue() != null ? entry.getValue().toLowerCase() : "";
+                switch (entry.getType()) {
+                    case "artist"  -> bannedArtists.add(v);
+                    case "song"    -> bannedSongs.add(v);
+                    case "keyword" -> { if (!v.isBlank()) bannedKeywords.add(v); }
+                }
+            }
+
+            int before = candidates.size();
+            candidates = candidates.stream().filter(song -> {
+                String title  = song.getTitle()  != null ? song.getTitle().toLowerCase()  : "";
+                String artist = song.getArtist() != null ? song.getArtist().toLowerCase() : "";
+
+                if (bannedArtists.contains(artist)) return false;
+                if (bannedSongs.contains(title))    return false;
+                for (String kw : bannedKeywords) {
+                    if (title.contains(kw) || artist.contains(kw)) return false;
+                }
+                return true;
+            }).collect(Collectors.toList());
+
+            int removed = before - candidates.size();
+            if (removed > 0) {
+                log.info("Global blacklist filter: removed {} songs (was {})", removed, before);
+            }
+        } catch (Exception e) {
+            log.warn("Global blacklist filtering failed, skipping", e);
+        }
+        return candidates;
+    }
+
     private int parsePlayedSeconds(String eventData) {
         if (eventData == null || eventData.isBlank()) return 0;
         try {
@@ -693,6 +800,9 @@ public class PlayerServiceImpl implements PlayerService {
                     songId = song.getId();
                     newSongsById.put(songId, vo);
                 }
+                // Replace Netease platform ID with the DB auto-increment ID so that
+                // all downstream references (feedback, liked, history) use the correct key.
+                vo.setId(songId);
 
                 // Auto-index into Qdrant for future vector recall
                 indexSongForVectorSearch(songId, vo.getTitle(), vo.getArtist(), vo.getAlbum());
@@ -724,7 +834,6 @@ public class PlayerServiceImpl implements PlayerService {
                         mapping.setSongId(songId);
                         mapping.setPlatform(platform);
                         mapping.setPlatformSongId(vo.getPlatformSongId());
-                        mapping.setAvailable(1);
                         platformSongMappingMapper.insert(mapping);
                     }
                 } catch (Exception e) {
@@ -793,7 +902,7 @@ public class PlayerServiceImpl implements PlayerService {
     }
 
     private List<SongVO> fetchSearch(String platform, String keywords, int limit) {
-        try { return MusicResponseParser.parseSongs(musicApiClient.searchSongs(platform, keywords, limit), platform); }
+        try { return MusicResponseParser.parseSongs(musicApiClient.searchSongs(platform, keywords, limit, null), platform); }
         catch (Exception e) { log.warn("fetchSearch failed: {}", keywords, e); return List.of(); }
     }
 
@@ -904,6 +1013,68 @@ public class PlayerServiceImpl implements PlayerService {
      */
     private SongVO songToVO(Song song) {
         return songsToVOs(List.of(song)).get(0);
+    }
+
+    // ===================== Play URL 批量获取 =====================
+
+    /**
+     * Batch-fetch play URLs from the music adapter and set them on SongVOs.
+     * Uses a single API call with comma-separated IDs to avoid N+1 requests.
+     * For QQ Music, songs without a URL are retried via Netease fallback.
+     */
+    private void enrichWithPlayUrls(List<SongVO> songs, String platform, String cookie) {
+        if (songs == null || songs.isEmpty()) return;
+        List<String> ids = songs.stream()
+                .map(SongVO::getPlatformSongId)
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
+                .collect(Collectors.toList());
+        if (ids.isEmpty()) return;
+        try {
+            Map<String, String> urlMap = musicApiClient.getSongUrls(platform, ids, cookie);
+            int enriched = 0;
+            for (SongVO song : songs) {
+                String url = urlMap.get(song.getPlatformSongId());
+                if (url != null && !url.isBlank()) {
+                    song.setPlayUrl(url);
+                    song.setUrlSource(platform);
+                    enriched++;
+                }
+            }
+            log.info("Enriched {}/{} songs with play URLs from {}", enriched, songs.size(), platform);
+
+            // For QQ Music: try Netease fallback for songs that still have no URL
+            if ("qqmusic".equals(platform)) {
+                List<SongVO> missing = songs.stream()
+                        .filter(s -> s.getPlayUrl() == null || s.getPlayUrl().isBlank())
+                        .collect(Collectors.toList());
+                if (!missing.isEmpty()) {
+                    fillFallbackUrls(missing);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to enrich songs with play URLs, continuing without them", e);
+        }
+    }
+
+    private void fillFallbackUrls(List<SongVO> songs) {
+        int fallbackCount = 0;
+        for (SongVO song : songs) {
+            try {
+                String neteaseUrl = fallbackToNetease(
+                        song.getPlatformSongId(), song.getTitle(), song.getArtist(), null);
+                if (neteaseUrl != null && !neteaseUrl.isBlank()) {
+                    song.setPlayUrl(neteaseUrl);
+                    song.setUrlSource("netease_fallback");
+                    fallbackCount++;
+                }
+            } catch (Exception e) {
+                log.debug("Netease fallback skipped for song {}", song.getTitle());
+            }
+        }
+        if (fallbackCount > 0) {
+            log.info("Netease fallback provided URLs for {}/{} QQ Music songs", fallbackCount, songs.size());
+        }
     }
 
     // ===================== AI 重排 + 理由 =====================

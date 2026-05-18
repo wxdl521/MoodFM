@@ -1,8 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Noto+Serif+SC:wght@400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Noto+Serif+SC:wght@400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap');
 
 /* ── Design Tokens ── */
 :root {
@@ -23,9 +23,6 @@
   --serif-cn: 'Noto Serif SC', 'Songti SC', 'STSong', serif;
   --mono: 'JetBrains Mono', ui-monospace, monospace;
 
-  --radius-s: 6px;
-  --radius-m: 14px;
-  --radius-l: 28px;
 }
 
 [data-theme="dark"] {
@@ -65,15 +62,6 @@ body {
     radial-gradient(circle at 70% 40%, var(--mood-b) 0%, transparent 55%),
     radial-gradient(circle at 50% 80%, var(--mood-c) 0%, transparent 60%),
     radial-gradient(circle at 20% 70%, var(--mood-d) 0%, transparent 65%);
-  background-color: var(--mood-c);
-}
-
-.mood-cover {
-  background:
-    radial-gradient(circle at 28% 28%, var(--mood-a) 0%, transparent 55%),
-    radial-gradient(circle at 75% 35%, var(--mood-b) 0%, transparent 55%),
-    radial-gradient(circle at 50% 85%, var(--mood-c) 0%, transparent 60%),
-    radial-gradient(circle at 18% 75%, var(--mood-d) 0%, transparent 60%);
   background-color: var(--mood-c);
 }
 
@@ -125,10 +113,7 @@ body {
 
 /* Layout */
 .row    { display: flex; align-items: center; gap: 12px; }
-.col    { display: flex; flex-direction: column; }
-.grow   { flex: 1; }
 .between { display: flex; align-items: center; justify-content: space-between; }
-.center { display: flex; align-items: center; justify-content: center; }
 
 /* Buttons */
 .btn {

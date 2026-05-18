@@ -20,4 +20,6 @@ public class PlaybackFeedbackDto {
     private Integer playedSeconds;
 
     private Integer totalSeconds;
+
+    private String platform;
 }

@@ -29,8 +29,6 @@ public class User {
 
     private Boolean emailVerified;
 
-    private Integer loginFailCount;
-
     private LocalDateTime lockUntil;
 
     @TableField(fill = FieldFill.INSERT)

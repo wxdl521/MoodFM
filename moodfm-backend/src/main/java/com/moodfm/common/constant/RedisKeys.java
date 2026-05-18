@@ -25,7 +25,6 @@ public final class RedisKeys {
     public static final String EMAIL_ATTEMPTS = "email:attempts:%s";       // email
 
     // 平台绑定
-    public static final String QR_LOGIN_KEY = "qrlogin:key:%s";            // platform:key
     public static final String QR_LOGIN_STATUS = "qrlogin:status:%s";      // platform:key
 
     // 播放队列
@@ -33,15 +32,6 @@ public final class RedisKeys {
 
     // 会话时长控制
     public static final String SESSION_TTL = "session:ttl:%d";              // sessionId
-
-    // AI 缓存
-    public static final String MOOD_ANALYSIS = "mood:%s";                  // input hash
-
-    // 歌曲 URL 缓存
-    public static final String SONG_URL = "song:url:%s:%s";               // platform:songId
-
-    // 平台 API 缓存
-    public static final String API_CACHE = "api:%s:%s:%s";                // platform:endpoint:paramsHash
 
     public static String format(String template, Object... args) {
         return String.format(template, args);

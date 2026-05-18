@@ -37,7 +37,7 @@ async function submit() {
   globalError.value = ''
   try {
     if (kind.value === 'login') {
-      await auth.login({ email: loginId.value, password: loginPwd.value })
+      await auth.login({ account: loginId.value, password: loginPwd.value, rememberMe: remember.value })
       router.push('/home')
     } else {
       await auth.register({ username: signName.value, email: signEmail.value, password: signPwd.value })

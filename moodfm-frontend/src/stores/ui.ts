@@ -5,7 +5,6 @@ import type { Theme, MoodPreset } from '@/types'
 export const useUiStore = defineStore('ui', () => {
   const theme = ref<Theme>((localStorage.getItem('moodfm_theme') as Theme) || 'light')
   const moodPreset = ref<MoodPreset>('dusk')
-  const drawerOpen = ref(false)
   const queueDrawerOpen = ref(false)
 
   function setTheme(t: Theme) {
@@ -18,13 +17,9 @@ export const useUiStore = defineStore('ui', () => {
     moodPreset.value = p
   }
 
-  function toggleDrawer() {
-    drawerOpen.value = !drawerOpen.value
-  }
-
   function toggleQueueDrawer() {
     queueDrawerOpen.value = !queueDrawerOpen.value
   }
 
-  return { theme, moodPreset, drawerOpen, queueDrawerOpen, setTheme, setMoodPreset, toggleDrawer, toggleQueueDrawer }
+  return { theme, moodPreset, queueDrawerOpen, setTheme, setMoodPreset, toggleQueueDrawer }
 })

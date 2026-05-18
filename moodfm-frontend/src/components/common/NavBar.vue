@@ -23,10 +23,14 @@
 
       <!-- Right: platform tag + icons + avatar -->
       <div class="navbar__right">
-        <!-- Platform badge -->
-        <span v-if="platformLabel" class="navbar__platform-badge">
-          {{ platformLabel }}
-        </span>
+        <!-- Platform bind button -->
+        <RouterLink to="/bind" class="navbar__platform-btn" aria-label="平台绑定">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+          <span class="navbar__platform-btn-label">平台</span>
+        </RouterLink>
 
         <!-- Search -->
         <button class="navbar__icon-btn" aria-label="搜索" @click="$router.push('/search')">
@@ -73,11 +77,6 @@ const user = computed(() => authStore.user)
 const userInitial = computed(() =>
   user.value?.username?.charAt(0).toUpperCase() ?? '?',
 )
-
-const platformLabel = computed(() => {
-  // Could be driven by a settings store later; leaving as placeholder
-  return null as string | null
-})
 
 const navLinks = [
   { to: '/home',      label: '电台' },
@@ -180,6 +179,39 @@ const navLinks = [
   background: var(--bg-2);
   color: var(--ink-2);
   border: 1px solid var(--rule);
+}
+
+.navbar__platform-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  background: var(--bg-2);
+  color: var(--ink-2);
+  text-decoration: none;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.navbar__platform-btn:hover {
+  color: var(--ink);
+  border-color: var(--ink-3);
+  background: var(--bg);
+}
+
+.navbar__platform-btn-label {
+  display: inline;
+}
+
+@media (max-width: 480px) {
+  .navbar__platform-btn-label {
+    display: none;
+  }
 }
 
 .navbar__icon-btn {

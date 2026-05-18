@@ -9,9 +9,10 @@ const error = ref<string | null>(null)
 
 interface Binding {
   platform: string
-  bound: boolean
-  nickname?: string
-  isDefault?: boolean
+  valid: boolean
+  platformUsername?: string
+  default?: boolean
+  expiresAt?: string
 }
 
 const bindings = ref<Binding[]>([])
@@ -34,7 +35,15 @@ onMounted(async () => {
 })
 
 function getBinding(key: string) {
-  return bindings.value.find(b => b.platform === key && b.bound)
+  return bindings.value.find(b => b.platform === key && b.valid)
+}
+
+function expiryStatus(b: Binding): { label: string; color: string } | null {
+  if (!b.expiresAt) return null
+  const days = Math.ceil((new Date(b.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+  if (days < 0) return { label: '已过期', color: '#e05252' }
+  if (days <= 7) return { label: `${days}天后过期`, color: '#d4a017' }
+  return null
 }
 
 async function handleSetDefault(key: string) {
@@ -57,7 +66,7 @@ async function handleUnbind(key: string) {
   try {
     await platformApi.unbind(key as 'netease' | 'qqmusic')
     bindings.value = bindings.value.map(b =>
-      b.platform === key ? { ...b, bound: false, nickname: undefined } : b
+      b.platform === key ? { ...b, valid: false, platformUsername: undefined } : b
     )
   } catch (e: any) {
     alert('解绑失败：' + (e?.message ?? ''))
@@ -103,14 +112,19 @@ async function handleUnbind(key: string) {
               <div style="font-family:var(--serif-cn);font-size:17px;font-weight:500;">{{ p.label }}</div>
               <div class="meta" style="margin-top:3px;color:var(--ink-3);">
                 <template v-if="getBinding(p.key)">
-                  {{ getBinding(p.key)?.nickname ?? '已绑定' }}
-                  <template v-if="getBinding(p.key)?.isDefault"> · 默认音源</template>
+                  {{ getBinding(p.key)?.platformUsername ?? '已绑定' }}
+                  <template v-if="getBinding(p.key)?.default"> · 默认音源</template>
+                  <template v-if="expiryStatus(getBinding(p.key)!)">
+                    <span :style="{ color: expiryStatus(getBinding(p.key)!)?.color }">
+                      · {{ expiryStatus(getBinding(p.key)!)?.label }}
+                    </span>
+                  </template>
                 </template>
                 <template v-else>未绑定</template>
               </div>
             </div>
             <span
-              v-if="getBinding(p.key)?.isDefault"
+              v-if="getBinding(p.key)?.default"
               class="meta"
               style="padding:3px 10px;background:var(--ink);color:var(--bg);border-radius:999px;"
             >默认</span>

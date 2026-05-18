@@ -1,25 +1,23 @@
 package com.moodfm.service.embedding;
 
-import org.springframework.stereotype.Service;
-
 import java.nio.charset.StandardCharsets;
 import java.util.zip.CRC32;
 
 /**
- * Deterministic hash-based mock embedding service (128-dim).
+ * Deterministic hash-based mock embedding service (2048-dim).
  * <p>
  * Produces similar vectors for similar text by:
  * - Tokenizing on whitespace
  * - Hashing each token into a fixed-dimensional sub-space
- * - Accumulating token contributions into a 128-dim vector
+ * - Accumulating token contributions into a 2048-dim vector
  * - L2-normalizing the result
  * <p>
- * This is a placeholder: swap for a real embedding model (OpenAI, BGE, etc.) later.
+ * This is a fallback — the primary service is {@link OpenAiEmbeddingService} which uses
+ * a real embedding API. This class is only used when the API is unavailable.
  */
-@Service
 public class HashEmbeddingService implements EmbeddingService {
 
-    private static final int DIM = 128;
+    private static final int DIM = 2048;
 
     @Override
     public float[] embed(String text) {
