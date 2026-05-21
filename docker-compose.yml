@@ -26,7 +26,7 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes --protected-mode no --requirepass ${REDIS_PASSWORD}
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
