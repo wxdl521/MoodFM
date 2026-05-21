@@ -72,6 +72,7 @@ moodfm:
 app:
   music-adapter:
     url: ${MUSIC_ADAPTER_URL:http://localhost:3000}
+    secret: ${ADAPTER_SECRET:}
   jwt:
     secret: ${JWT_SECRET:}
     access-token-expire-ms: 1800000    # 30 分钟

@@ -22,13 +22,20 @@ public class MusicApiClient {
     @Value("${app.music-adapter.url}")
     private String adapterUrl;
 
+    @Value("${app.music-adapter.secret:}")
+    private String adapterSecret;
+
     private final ObjectMapper objectMapper;
 
     private RestClient restClient;
 
     @PostConstruct
     void init() {
-        this.restClient = RestClient.builder().baseUrl(adapterUrl).build();
+        RestClient.Builder builder = RestClient.builder().baseUrl(adapterUrl);
+        if (adapterSecret != null && !adapterSecret.isBlank()) {
+            builder.defaultHeader("X-Adapter-Secret", adapterSecret);
+        }
+        this.restClient = builder.build();
     }
 
     /** 平台名转小写，匹配 adapter 路由（NETEASE → netease） */
@@ -177,7 +184,11 @@ public class MusicApiClient {
             com.fasterxml.jackson.databind.JsonNode data = objectMapper.readTree(json).path("data");
             if (data.isArray()) {
                 for (com.fasterxml.jackson.databind.JsonNode item : data) {
-                    String id = String.valueOf(item.path("id").asLong(0));
+                    // QQ Music IDs are alphanumeric strings (songmid), not numeric
+                    String id = item.path("id").asText("");
+                    if (id.isEmpty()) {
+                        id = String.valueOf(item.path("id").asLong(0));
+                    }
                     String songUrl = item.path("url").asText("");
                     if (!id.isEmpty() && !"0".equals(id) && !songUrl.isEmpty()) {
                         urlMap.put(id, songUrl);
