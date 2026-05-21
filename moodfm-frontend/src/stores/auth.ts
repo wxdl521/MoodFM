@@ -64,5 +64,10 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  return { token, user, isLoggedIn, login, register, logout, fetchMe, validate }
+  function setTokens(accessToken: string, newRefreshToken?: string) {
+    token.value = accessToken
+    if (newRefreshToken) localStorage.setItem('moodfm_refresh_token', newRefreshToken)
+  }
+
+  return { token, user, isLoggedIn, login, register, logout, fetchMe, validate, setTokens }
 })
