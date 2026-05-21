@@ -6,14 +6,19 @@ import com.moodfm.service.insights.InsightsService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
 
+@Validated
 @Tag(name = "数据洞察", description = "个人画像 / 日历 / 趋势接口")
 @RestController
 @RequestMapping("/api/insights")
@@ -36,16 +41,16 @@ public class InsightsController {
     @Operation(summary = "获取某天详情（心情 + 当天最常听）")
     @GetMapping("/day/{date}")
     public R<DayDetailVO> getDayDetail(
-            @PathVariable String date,
+            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @AuthenticationPrincipal UserDetails userDetails) {
         Long userId = Long.parseLong(userDetails.getUsername());
-        return R.ok(insightsService.getDayDetail(userId, LocalDate.parse(date)));
+        return R.ok(insightsService.getDayDetail(userId, date));
     }
 
     @Operation(summary = "获取综合统计摘要")
     @GetMapping("/summary")
     public R<InsightsSummaryVO> getSummary(
-            @RequestParam(defaultValue = "7") int days,
+            @RequestParam(defaultValue = "7") @Min(1) @Max(365) int days,
             @AuthenticationPrincipal UserDetails userDetails) {
         Long userId = Long.parseLong(userDetails.getUsername());
         return R.ok(insightsService.getSummary(userId, days));
@@ -54,7 +59,7 @@ public class InsightsController {
     @Operation(summary = "获取心情曲线数据")
     @GetMapping("/mood-trend")
     public R<MoodTrendVO> getMoodTrend(
-            @RequestParam(defaultValue = "7") int days,
+            @RequestParam(defaultValue = "7") @Min(1) @Max(365) int days,
             @AuthenticationPrincipal UserDetails userDetails) {
         Long userId = Long.parseLong(userDetails.getUsername());
         return R.ok(insightsService.getMoodTrend(userId, days));
@@ -63,7 +68,7 @@ public class InsightsController {
     @Operation(summary = "获取流派分布雷达图数据")
     @GetMapping("/genre-radar")
     public R<List<GenreRadarItemVO>> getGenreRadar(
-            @RequestParam(defaultValue = "7") int days,
+            @RequestParam(defaultValue = "7") @Min(1) @Max(365) int days,
             @AuthenticationPrincipal UserDetails userDetails) {
         Long userId = Long.parseLong(userDetails.getUsername());
         return R.ok(insightsService.getGenreRadar(userId, days));
@@ -72,7 +77,7 @@ public class InsightsController {
     @Operation(summary = "获取 TOP 艺人 + TOP 歌曲")
     @GetMapping("/top-items")
     public R<TopItemsVO> getTopItems(
-            @RequestParam(defaultValue = "7") int days,
+            @RequestParam(defaultValue = "7") @Min(1) @Max(365) int days,
             @AuthenticationPrincipal UserDetails userDetails) {
         Long userId = Long.parseLong(userDetails.getUsername());
         return R.ok(insightsService.getTopItems(userId, days));
