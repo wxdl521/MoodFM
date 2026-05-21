@@ -19,7 +19,7 @@
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
+      password: ${REDIS_PASSWORD}
       timeout: 3000ms
       lettuce:
         pool:
@@ -64,7 +64,7 @@ management:
         include: health,info,metrics
   endpoint:
     health:
-      show-details: always
+      show-details: never
 
 moodfm:
   upload-dir: ${UPLOAD_DIR:${user.home}/moodfm-uploads}
