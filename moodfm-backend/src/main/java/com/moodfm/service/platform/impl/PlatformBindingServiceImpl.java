@@ -18,6 +18,7 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -177,6 +178,7 @@ public class PlatformBindingServiceImpl implements PlatformBindingService {
     }
 
     @Override
+    @Transactional
     @CacheEvict(value = "platformMappings", key = "#userId")
     public void setDefault(Long userId, String platform) {
         bindingMapper.update(new LambdaUpdateWrapper<PlatformBinding>()
