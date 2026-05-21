@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -103,10 +104,15 @@ public class SearchServiceImpl implements SearchService {
             float[] vector = embeddingService.embed(query);
             List<Long> songIds = qdrantService.searchSimilar(vector, limit);
 
-            for (Long songId : songIds) {
-                Song song = songMapper.selectById(songId);
-                if (song != null) {
-                    songs.add(toVO(song));
+            if (!songIds.isEmpty()) {
+                // 批量查询，单次 SELECT ... WHERE id IN (...)
+                List<Song> dbSongs = songMapper.selectBatchIds(songIds);
+                // 保持向量搜索的排序顺序
+                Map<Long, Song> songMap = dbSongs.stream()
+                        .collect(Collectors.toMap(Song::getId, s -> s));
+                for (Long songId : songIds) {
+                    Song song = songMap.get(songId);
+                    if (song != null) songs.add(toVO(song));
                 }
             }
         } catch (Exception e) {
