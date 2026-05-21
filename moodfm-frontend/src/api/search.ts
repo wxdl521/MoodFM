@@ -11,7 +11,7 @@ export interface SearchResult {
 }
 
 export const searchApi = {
-  search(q: string, mode: SearchMode = 'keyword', limit = 20): Promise<SearchResult> {
-    return api.get('/search', { params: { q, mode, limit } })
+  search(q: string, mode: SearchMode = 'keyword', limit = 20, signal?: AbortSignal): Promise<SearchResult> {
+    return api.get('/search', { params: { q, mode, limit }, signal })
   },
 }
