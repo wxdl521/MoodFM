@@ -27,6 +27,9 @@ public final class RedisKeys {
     // 平台绑定
     public static final String QR_LOGIN_STATUS = "qrlogin:status:%s";      // platform:key
 
+    /** 用户所有 refresh token 的集合，用于批量吊销（无需全局 KEYS 扫描） */
+    public static final String USER_REFRESH_TOKENS = "auth:user_tokens:%d"; // userId
+
     // 播放队列
     public static final String USER_QUEUE = "queue:%d";                     // userId
 
