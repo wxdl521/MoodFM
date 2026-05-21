@@ -47,8 +47,9 @@ public class CookieRefreshScheduler {
                 } catch (Exception e) {
                     log.warn("Failed to check notification prefs for user {}, sending anyway", binding.getUserId(), e);
                 }
-                messagingTemplate.convertAndSend(
-                        "/topic/notify/" + binding.getUserId(),
+                messagingTemplate.convertAndSendToUser(
+                        String.valueOf(binding.getUserId()),
+                        "/queue/notify",
                         Map.of("type", "cookie_invalid", "platform", binding.getPlatform())
                 );
                 log.info("Notified user {} about expiring {} cookie", binding.getUserId(), binding.getPlatform());

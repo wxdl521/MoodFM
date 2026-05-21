@@ -31,6 +31,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void configureMessageBroker(MessageBrokerRegistry registry) {
         // 服务端推送前缀
         registry.enableSimpleBroker("/topic", "/queue");
+        // 用户私有队列前缀（convertAndSendToUser 依赖此配置）
+        registry.setUserDestinationPrefix("/user");
         // 客户端发送前缀
         registry.setApplicationDestinationPrefixes("/app");
     }

@@ -23,6 +23,8 @@ export function useWebSocket() {
     client = new Client({
       brokerURL,
       reconnectDelay: 5000,
+      heartbeatIncoming: 10000,
+      heartbeatOutgoing: 10000,
       onConnect() {
         client!.subscribe(
           `/topic/radio/${sessionId}`,
@@ -42,6 +44,7 @@ export function useWebSocket() {
         )
       },
       onDisconnect() {
+        console.warn('[WS] disconnected');
       },
       onStompError(frame) {
         console.error('[WS] STOMP error', frame)
