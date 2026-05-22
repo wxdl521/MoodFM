@@ -22,7 +22,10 @@ import org.springframework.cache.annotation.Cacheable;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import com.moodfm.common.exception.BizException;
+
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -226,14 +229,17 @@ public class SongServiceImpl implements SongService {
             return null;
         }
         try {
-            PlatformBinding binding = bindingService.getValidBinding(userId, mapping.getPlatform());
-            if (binding == null) {
+            PlatformBinding binding;
+            try {
+                binding = bindingService.getValidBinding(userId, mapping.getPlatform());
+            } catch (BizException e) {
                 binding = bindingService.getDefaultBinding(userId);
             }
             String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
             String url = musicApiClient.getSongUrl(mapping.getPlatform(), mapping.getPlatformSongId(), cookie);
             if (url == null || url.isBlank()) {
                 log.warn("Empty audio URL for song {} platform={}", songId, mapping.getPlatform());
+                return null;
             }
             return url;
         } catch (Exception e) {
@@ -254,14 +260,18 @@ public class SongServiceImpl implements SongService {
         Map<String, List<PlatformSongMapping>> byPlatform = mappings.stream()
                 .collect(Collectors.groupingBy(PlatformSongMapping::getPlatform));
 
-        Map<Long, String> result = new java.util.HashMap<>();
+        Map<Long, String> result = new HashMap<>();
 
         for (Map.Entry<String, List<PlatformSongMapping>> entry : byPlatform.entrySet()) {
             String platform = entry.getKey();
             List<PlatformSongMapping> platformMappings = entry.getValue();
             try {
-                PlatformBinding binding = bindingService.getValidBinding(userId, platform);
-                if (binding == null) binding = bindingService.getDefaultBinding(userId);
+                PlatformBinding binding;
+                try {
+                    binding = bindingService.getValidBinding(userId, platform);
+                } catch (BizException e) {
+                    binding = bindingService.getDefaultBinding(userId);
+                }
                 String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
 
                 List<String> platformIds = platformMappings.stream()
