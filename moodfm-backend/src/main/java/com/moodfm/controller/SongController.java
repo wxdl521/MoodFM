@@ -69,4 +69,24 @@ public class SongController {
                                           @AuthenticationPrincipal UserDetails ud) {
         return R.ok(songService.getLyrics(uid(ud), id));
     }
+
+    @Operation(summary = "获取歌曲播放地址")
+    @GetMapping("/{id}/audio-url")
+    public R<Map<String, String>> getAudioUrl(@PathVariable Long id,
+                                               @AuthenticationPrincipal UserDetails ud) {
+        String url = songService.getAudioUrl(uid(ud), id);
+        if (url == null || url.isBlank()) {
+            return R.fail(404, "暂无可用播放地址");
+        }
+        Map<String, String> body = new java.util.HashMap<>();
+        body.put("url", url);
+        return R.ok(body);
+    }
+
+    @Operation(summary = "批量获取歌曲播放地址")
+    @PostMapping("/batch-audio-urls")
+    public R<Map<Long, String>> batchAudioUrls(@RequestBody List<Long> songIds,
+                                                @AuthenticationPrincipal UserDetails ud) {
+        return R.ok(songService.getAudioUrls(uid(ud), songIds));
+    }
 }
