@@ -12,6 +12,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -78,7 +79,7 @@ public class SongController {
         if (url == null || url.isBlank()) {
             return R.fail(404, "暂无可用播放地址");
         }
-        Map<String, String> body = new java.util.HashMap<>();
+        Map<String, String> body = new HashMap<>();
         body.put("url", url);
         return R.ok(body);
     }
