@@ -1,4 +1,4 @@
-import { ref, onUnmounted } from 'vue'
+import { ref } from 'vue'
 import type { Ref } from 'vue'
 import type { RouteLocationNormalized } from 'vue-router'
 import router from '@/router'
@@ -22,14 +22,12 @@ export function getDirection(
   return fromOrder <= toOrder ? 'slide-left' : 'slide-right'
 }
 
+const transitionName = ref<TransitionName>('slide-left')
+
+router.beforeEach((to, from) => {
+  transitionName.value = getDirection(from, to)
+})
+
 export function useNavDirection(): { transitionName: Ref<TransitionName> } {
-  const transitionName = ref<TransitionName>('slide-left')
-
-  const removeGuard = router.beforeEach((to, from) => {
-    transitionName.value = getDirection(from, to)
-  })
-
-  onUnmounted(removeGuard)
-
   return { transitionName }
 }

@@ -1,6 +1,6 @@
 <template>
-  <div :data-theme="uiStore.theme" :data-mood="uiStore.moodPreset">
-    <Transition name="page" mode="out-in">
+  <div :data-theme="uiStore.theme" :data-mood="uiStore.moodPreset" style="overflow-x:hidden;min-height:100vh;">
+    <Transition :name="transitionName" mode="out-in">
       <RouterView :key="$route.path" />
     </Transition>
 
@@ -40,22 +40,75 @@ import { watch, onMounted } from 'vue'
 import { useUiStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifications } from '@/composables/useNotifications'
+import { useNavDirection } from '@/composables/useNavDirection'
 
 const uiStore = useUiStore()
 const authStore = useAuthStore()
 const { notifications, connect, dismiss } = useNotifications()
+const { transitionName } = useNavDirection()
 
-// Validate token on app start
 onMounted(() => { authStore.validate() })
 
-// Connect notification WebSocket when user is logged in
 watch(() => authStore.user?.id, (id) => {
   if (id) connect(id)
 }, { immediate: true })
 </script>
 
 <style>
-/* ── Page transitions ──────────────────────────────── */
+/* ── Slide-left: entering a deeper / forward page ──────────── */
+.slide-left-enter-active {
+  transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1),
+              opacity   320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.slide-left-leave-active {
+  transition: transform 200ms ease,
+              opacity   200ms ease;
+}
+.slide-left-enter-from {
+  transform: translateX(100%);
+  opacity: 0;
+}
+.slide-left-leave-to {
+  transform: translateX(-25%);
+  opacity: 0;
+}
+
+/* ── Slide-right: returning to a shallower / previous page ──── */
+.slide-right-enter-active {
+  transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1),
+              opacity   320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.slide-right-leave-active {
+  transition: transform 200ms ease,
+              opacity   200ms ease;
+}
+.slide-right-enter-from {
+  transform: translateX(-25%);
+  opacity: 0;
+}
+.slide-right-leave-to {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+/* ── prefers-reduced-motion: opacity fade only, no slide ────── */
+@media (prefers-reduced-motion: reduce) {
+  .slide-left-enter-active,
+  .slide-left-leave-active,
+  .slide-right-enter-active,
+  .slide-right-leave-active {
+    transition: opacity 100ms ease !important;
+  }
+  .slide-left-enter-from,
+  .slide-left-leave-to,
+  .slide-right-enter-from,
+  .slide-right-leave-to {
+    transform: none !important;
+    opacity: 0;
+  }
+}
+
+/* ── Legacy .page-* kept as fallback ─────────────────────────── */
 .page-enter-active {
   animation: page-blur-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -64,16 +117,8 @@ watch(() => authStore.user?.id, (id) => {
 }
 
 @keyframes page-blur-in {
-  from {
-    opacity: 0;
-    filter: blur(3px);
-    transform: scale(0.985);
-  }
-  to {
-    opacity: 1;
-    filter: blur(0);
-    transform: scale(1);
-  }
+  from { opacity: 0; filter: blur(3px); transform: scale(0.985); }
+  to   { opacity: 1; filter: blur(0);   transform: scale(1); }
 }
 
 @keyframes page-fade-out {
