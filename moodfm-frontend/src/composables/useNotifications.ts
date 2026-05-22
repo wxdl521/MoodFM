@@ -2,6 +2,7 @@ import { ref, onUnmounted } from 'vue'
 import { Client, type IMessage } from '@stomp/stompjs'
 
 export interface Notification {
+  id: string
   type: string
   platform?: string
   message?: string
@@ -25,14 +26,18 @@ export function useNotifications() {
       onConnect() {
         client!.subscribe(`/topic/notify/${userId}`, (message: IMessage) => {
           try {
-            const payload = JSON.parse(message.body) as Notification
-            const dedupeKey = (payload as any).id ?? `${payload.type}:${payload.platform}:${payload.message}`
+            const raw = JSON.parse(message.body) as Omit<Notification, 'id'>
+            const dedupeKey = `${raw.type}:${raw.platform}:${raw.message}`
             if (seenIds.has(dedupeKey)) return
             seenIds.add(dedupeKey)
-            notifications.value.push(payload)
+            const notification: Notification = {
+              ...raw,
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            }
+            notifications.value.push(notification)
             // Auto-dismiss after 8 seconds
             setTimeout(() => {
-              const idx = notifications.value.indexOf(payload)
+              const idx = notifications.value.indexOf(notification)
               if (idx >= 0) notifications.value.splice(idx, 1)
             }, 8000)
           } catch {
@@ -48,8 +53,9 @@ export function useNotifications() {
     client.activate()
   }
 
-  function dismiss(idx: number) {
-    notifications.value.splice(idx, 1)
+  function dismiss(id: string) {
+    const idx = notifications.value.findIndex(n => n.id === id)
+    if (idx >= 0) notifications.value.splice(idx, 1)
   }
 
   function disconnect() {

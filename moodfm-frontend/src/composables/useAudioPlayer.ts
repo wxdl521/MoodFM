@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { Howl } from 'howler'
 import { usePlayerStore } from '@/stores/player'
+import api from '@/api/client'
 
 // Module-level singleton — shared across Player.vue and MiniPlayer.vue
 const isReady = ref(false)
@@ -99,16 +100,14 @@ function load(url: string): Promise<void> {
         store.next()
         // Fire-and-forget: record completed play
         if (completedSong?.id && sessionId) {
-          import('@/api/client').then(({ default: api }) => {
-            api.post('/radio/feedback', {
-              sessionId: Number(sessionId),
-              songId: Number(completedSong.id),
-              eventType: 'completed',
-              playedSeconds: totalSecs,
-              totalSeconds: totalSecs,
-              platform: (completedSong as any).platform || 'netease',
-            }).catch(() => {})
-          })
+          api.post('/radio/feedback', {
+            sessionId: Number(sessionId),
+            songId: Number(completedSong.id),
+            eventType: 'completed',
+            playedSeconds: totalSecs,
+            totalSeconds: totalSecs,
+            platform: completedSong.platform || 'netease',
+          }).catch(() => {})
         }
         const next = store.currentSong
         if (next?.audioUrl) {

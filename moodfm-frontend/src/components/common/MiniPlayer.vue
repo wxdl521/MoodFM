@@ -51,6 +51,7 @@ import { useRouter } from 'vue-router'
 import { usePlayerStore } from '@/stores/player'
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import MoodBlob from './MoodBlob.vue'
+import api from '@/api/client'
 
 const router = useRouter()
 const playerStore = usePlayerStore()
@@ -86,16 +87,14 @@ function handleNext() {
     audioPlayer.stop()
   }
   if (prevSong?.id && sid) {
-    import('@/api/client').then(({ default: apiClient }) => {
-      apiClient.post('/radio/feedback', {
-        sessionId: Number(sid),
-        songId: Number(prevSong.id),
-        eventType: 'skip',
-        playedSeconds: playedSecs,
-        totalSeconds: totalSecs,
-        platform: (prevSong as any).platform || 'netease',
-      }).catch(() => {})
-    })
+    api.post('/radio/feedback', {
+      sessionId: Number(sid),
+      songId: Number(prevSong.id),
+      eventType: 'skip',
+      playedSeconds: playedSecs,
+      totalSeconds: totalSecs,
+      platform: prevSong.platform || 'netease',
+    }).catch(() => {})
   }
 }
 
@@ -130,6 +129,8 @@ function handlePrev() {
   z-index: 100;
   cursor: pointer;
   user-select: none;
+  animation: mini-slide-up 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition: box-shadow 0.2s ease, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @media (min-width: 768px) {
@@ -201,11 +202,20 @@ function handlePrev() {
   background: transparent;
   color: var(--bg);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .mini-player__btn:hover {
   background: rgba(244, 239, 230, 0.12);
+}
+
+.mini-player__btn:active {
+  transform: scale(0.85);
+  transition-duration: 0.07s;
+}
+
+.mini-player:hover {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.36), 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .mini-player__btn--primary {
@@ -213,9 +223,27 @@ function handlePrev() {
   height: 40px;
   background: var(--bg);
   color: var(--ink);
+  transition: background 0.15s, transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .mini-player__btn--primary:hover {
   background: var(--bg-2, #ebe4d6);
+}
+
+.mini-player__btn--primary:active {
+  transform: scale(0.88);
+  transition-duration: 0.07s;
+}
+
+/* ── MiniPlayer enter ──────────────────────────────── */
+@keyframes mini-slide-up {
+  from {
+    transform: translateY(100%) scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
 }
 </style>

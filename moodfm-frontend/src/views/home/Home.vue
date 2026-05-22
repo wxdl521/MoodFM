@@ -441,6 +441,12 @@ onMounted(async () => {
   align-items: center;
   gap: 16px;
   background: var(--paper);
+  transition: box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+.just-play-card:hover {
+  border-color: var(--ink-3);
+  box-shadow: 0 4px 20px rgba(110, 92, 217, 0.1);
 }
 
 .just-play-title {
@@ -476,6 +482,7 @@ onMounted(async () => {
 
 .resume-card:hover {
   border-color: var(--ink-3);
+  box-shadow: 0 4px 16px rgba(110, 92, 217, 0.12);
 }
 
 .resume-card--empty {
@@ -560,13 +567,16 @@ onMounted(async () => {
   padding: 14px;
   background: var(--paper);
   cursor: pointer;
-  transition: border-color 0.15s, transform 0.15s;
+  transition: border-color 0.18s ease,
+            transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+            box-shadow 0.22s ease;
   overflow: hidden;
 }
 
 .recent-card:hover {
   border-color: var(--ink-3);
-  transform: translateY(-2px);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 28px rgba(110, 92, 217, 0.14), 0 2px 8px rgba(26,23,20,0.06);
 }
 
 .recent-card--placeholder {
@@ -607,4 +617,29 @@ onMounted(async () => {
   background: var(--ink);
   color: var(--bg);
 }
+
+/* ── Home enter animations ─────────────────────────── */
+@keyframes home-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.home-left {
+  animation: home-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.08s both;
+}
+
+.home-right {
+  animation: home-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.18s both;
+}
+
+/* ── Recent cards stagger ─────────────────────────── */
+@keyframes card-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.recent-card:nth-child(1) { animation: card-rise 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.12s both; }
+.recent-card:nth-child(2) { animation: card-rise 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.19s both; }
+.recent-card:nth-child(3) { animation: card-rise 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.26s both; }
+.recent-card:nth-child(4) { animation: card-rise 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.33s both; }
 </style>

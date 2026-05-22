@@ -22,6 +22,10 @@ public final class MusicResponseParser {
         if (!arr.isArray()) arr = data.path("result").path("songs");
         if (!arr.isArray()) return songs;
 
+        if ("qqmusic".equalsIgnoreCase(platform)) {
+            return parseQqMusicSongs(arr, platform);
+        }
+
         for (JsonNode s : arr) {
             long id = s.path("id").asLong();
             if (id == 0) id = s.path("song").path("id").asLong();
@@ -48,6 +52,48 @@ public final class MusicResponseParser {
                     .coverUrl(cover)
                     .platform(platform)
                     .platformSongId(String.valueOf(id))
+                    .build());
+        }
+        return songs;
+    }
+
+    private static List<SongVO> parseQqMusicSongs(JsonNode arr, String platform) {
+        List<SongVO> songs = new ArrayList<>();
+        for (JsonNode s : arr) {
+            String songmid = s.path("songmid").asText("");
+            if (songmid.isEmpty()) songmid = s.path("mid").asText("");
+            if (songmid.isEmpty()) continue;
+
+            long id = s.path("id").asLong(0);
+            String title = s.path("songname").asText(s.path("title").asText(""));
+
+            StringBuilder artistBuilder = new StringBuilder();
+            JsonNode singers = s.path("singer");
+            if (singers.isArray()) {
+                for (JsonNode singer : singers) {
+                    if (artistBuilder.length() > 0) artistBuilder.append("/");
+                    artistBuilder.append(singer.path("name").asText(""));
+                }
+            }
+
+            String album = s.path("album").path("name").asText("");
+            if (album.isEmpty()) album = s.path("albumname").asText("");
+            String albumMid = s.path("album").path("mid").asText("");
+            if (albumMid.isEmpty()) albumMid = s.path("albummid").asText("");
+            String cover = albumMid.isEmpty() ? "" :
+                    "https://y.qq.com/music/photo_new/T002R300x300M000" + albumMid + ".jpg";
+
+            int dur = s.path("interval").asInt(0);
+
+            songs.add(SongVO.builder()
+                    .id(id)
+                    .title(title)
+                    .artist(artistBuilder.toString())
+                    .album(album)
+                    .durationSeconds(dur)
+                    .coverUrl(cover)
+                    .platform(platform)
+                    .platformSongId(songmid)
                     .build());
         }
         return songs;

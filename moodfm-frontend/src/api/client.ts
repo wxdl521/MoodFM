@@ -29,8 +29,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => {
     const body = res.data
-    if (body && typeof body === 'object' && 'code' in body && 'data' in body) {
-      return body.data
+    if (body && typeof body === 'object' && 'code' in body) {
+      if ('data' in body) return body.data
+      return Promise.reject({ message: body.message || '请求失败', code: body.code })
     }
     return body
   },
@@ -69,6 +70,11 @@ api.interceptors.response.use(
         localStorage.setItem('moodfm_token', newAccessToken);
         if (data.refreshToken) localStorage.setItem('moodfm_refresh_token', data.refreshToken);
         api.defaults.headers.common.Authorization = `Bearer ${newAccessToken}`;
+        // 同步更新 Pinia authStore（避免 store 中的 token 与实际使用的 token 不同步）
+        // 使用动态 import 避免循环依赖（auth store → auth api → client）
+        import('@/stores/auth').then(({ useAuthStore }) => {
+          useAuthStore().setTokens(newAccessToken, data.refreshToken)
+        });
         processQueue(newAccessToken);
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
         return api(originalRequest);

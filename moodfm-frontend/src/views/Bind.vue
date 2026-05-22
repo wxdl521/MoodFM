@@ -186,16 +186,39 @@
           </div>
 
           <div v-else-if="activeTab === 'cookie'">
-            <div style="margin-bottom: 14px;">
+            <!-- QQ Music: bookmarklet one-click guide -->
+            <template v-if="isQQMusic">
+              <div style="margin-bottom: 16px;">
+                <div class="meta" style="margin-bottom: 10px;">一键绑定 · QUICK BIND</div>
+                <div style="font-family: var(--serif-cn); font-size: 13px; color: var(--ink-2); line-height: 2.2;">
+                  ① 将下方按钮<strong>拖到浏览器书签栏</strong><br />
+                  ② 打开 <a href="https://y.qq.com" target="_blank" rel="noopener" style="color: var(--ink); text-decoration: underline;">y.qq.com</a> 并登录<br />
+                  ③ 点击书签栏中的按钮，自动跳回并填入 Cookie
+                </div>
+                <div style="display: flex; justify-content: center; margin: 14px 0; padding: 16px; border: 2px dashed var(--rule); border-radius: 12px; background: var(--bg);">
+                  <a :href="bookmarkletCode"
+                     style="padding: 10px 24px; background: var(--ink); color: var(--bg); border-radius: 999px; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-decoration: none; cursor: grab; user-select: none; white-space: nowrap;"
+                     @click.prevent
+                     title="拖到书签栏">
+                    🔑 获取 QQ 音乐 Cookie
+                  </a>
+                </div>
+                <div class="meta" style="text-align: center; color: var(--ink-3);">↑ 拖到书签栏 · 然后在 y.qq.com 上点击</div>
+              </div>
+              <div class="meta" style="margin-bottom: 8px; padding-top: 12px; border-top: 1px dashed var(--rule);">或手动粘贴 · MANUAL PASTE</div>
+            </template>
+            <template v-else>
               <div class="between" style="margin-bottom: 8px;">
                 <div class="meta">COOKIE</div>
-                <a class="meta" style="color: var(--ink-2); text-decoration: underline; cursor: pointer;">如何获取 →</a>
               </div>
+            </template>
+
+            <div style="margin-bottom: 14px;">
               <textarea
                 v-model="cookieValue"
                 class="field"
-                placeholder="MUSIC_U=...; __csrf=...; NMTID=...;"
-                :style="{ minHeight: '160px', fontFamily: 'var(--mono)', fontSize: '12px' }"
+                :placeholder="isQQMusic ? 'uin=o0...; qm_keyst=...; （书签工具会自动填入）' : 'MUSIC_U=...; __csrf=...; NMTID=...;'"
+                :style="{ minHeight: '110px', fontFamily: 'var(--mono)', fontSize: '12px' }"
               />
             </div>
 
@@ -205,8 +228,7 @@
               {{ cookieLoading ? '验证中...' : '验证并保存 →' }}
             </button>
             <div class="meta" style="margin-top: 14px; color: var(--ink-3); line-height: 1.6;">
-              · 高级方式 · 适合扫码与短信都不便时使用<br />
-              · Cookie 会本地加密 · 服务端不留存明文
+              · Cookie 会本地加密存储 · 服务端不留存明文
             </div>
           </div>
         </div>
@@ -316,16 +338,39 @@
             </div>
 
             <div v-else-if="activeTab === 'cookie'">
-              <div style="margin-bottom: 14px;">
+              <!-- QQ Music: bookmarklet one-click guide (mobile) -->
+              <template v-if="isQQMusic">
+                <div style="margin-bottom: 16px;">
+                  <div class="meta" style="margin-bottom: 10px;">一键绑定 · QUICK BIND</div>
+                  <div style="font-family: var(--serif-cn); font-size: 13px; color: var(--ink-2); line-height: 2.2;">
+                    ① 将下方按钮<strong>拖到浏览器书签栏</strong><br />
+                    ② 打开 <a href="https://y.qq.com" target="_blank" rel="noopener" style="color: var(--ink); text-decoration: underline;">y.qq.com</a> 并登录<br />
+                    ③ 点击书签栏中的按钮，自动跳回并填入 Cookie
+                  </div>
+                  <div style="display: flex; justify-content: center; margin: 14px 0; padding: 16px; border: 2px dashed var(--rule); border-radius: 12px; background: var(--bg);">
+                    <a :href="bookmarkletCode"
+                       style="padding: 10px 24px; background: var(--ink); color: var(--bg); border-radius: 999px; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-decoration: none; cursor: grab; user-select: none; white-space: nowrap;"
+                       @click.prevent
+                       title="拖到书签栏">
+                      🔑 获取 QQ 音乐 Cookie
+                    </a>
+                  </div>
+                  <div class="meta" style="text-align: center; color: var(--ink-3);">↑ 拖到书签栏 · 然后在 y.qq.com 上点击</div>
+                </div>
+                <div class="meta" style="margin-bottom: 8px; padding-top: 12px; border-top: 1px dashed var(--rule);">或手动粘贴 · MANUAL PASTE</div>
+              </template>
+              <template v-else>
                 <div class="between" style="margin-bottom: 8px;">
                   <div class="meta">COOKIE</div>
-                  <a class="meta" style="color: var(--ink-2); text-decoration: underline; cursor: pointer;">如何获取 →</a>
                 </div>
+              </template>
+
+              <div style="margin-bottom: 14px;">
                 <textarea
                   v-model="cookieValue"
                   class="field"
-                  placeholder="MUSIC_U=...; __csrf=...; NMTID=...;"
-                  :style="{ minHeight: '160px', fontFamily: 'var(--mono)', fontSize: '12px' }"
+                  :placeholder="isQQMusic ? 'uin=o0...; qm_keyst=...; （书签工具会自动填入）' : 'MUSIC_U=...; __csrf=...; NMTID=...;'"
+                  :style="{ minHeight: '110px', fontFamily: 'var(--mono)', fontSize: '12px' }"
                 />
               </div>
 
@@ -335,8 +380,7 @@
                 {{ cookieLoading ? '验证中...' : '验证并保存 →' }}
               </button>
               <div class="meta" style="margin-top: 14px; color: var(--ink-3); line-height: 1.6;">
-                · 高级方式 · 适合扫码与短信都不便时使用<br />
-                · Cookie 会本地加密 · 服务端不留存明文
+                · Cookie 会本地加密存储 · 服务端不留存明文
               </div>
             </div>
           </div>
@@ -347,7 +391,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { platformApi } from '@/api/platform'
 
 const isMobile = ref(window.innerWidth < 768)
@@ -379,11 +423,13 @@ const tabs = [
 
 function openModal(platformId: string) {
   activePlatform.value = platformId
-  activeTab.value = 'qr'
+  activeTab.value = platformId === 'QQ音乐' ? 'cookie' : 'qr'
   if (isMobile.value) {
     modalOpen.value = true
   }
-  refreshQr()
+  if (activeTab.value === 'qr') {
+    refreshQr()
+  }
 }
 
 const PLATFORM_ID_MAP: Record<string, 'netease' | 'qqmusic'> = {
@@ -394,6 +440,11 @@ const PLATFORM_ID_MAP: Record<string, 'netease' | 'qqmusic'> = {
 function getPlatformId(name: string): 'netease' | 'qqmusic' | null {
   return PLATFORM_ID_MAP[name] ?? null
 }
+
+const isQQMusic = computed(() => activePlatform.value === 'QQ音乐')
+
+// Bookmarklet: runs on y.qq.com, extracts cookie, opens MoodFM with it in the URL fragment
+const bookmarkletCode = `javascript:(function(){if(location.hostname.indexOf('qq.com')<0){alert('请先打开 y.qq.com 并登录');return;}var c=document.cookie;if(!c){alert('未检测到 Cookie，请确认已在 y.qq.com 登录');return;}window.open('${window.location.origin}/bind?auto=qqmusic#cookie='+encodeURIComponent(c),'_blank');})();`
 
 const qrStatus = ref<'waiting' | 'scanned' | 'success' | 'expired'>('waiting')
 const qrCountdown = ref(90)
@@ -496,7 +547,17 @@ async function loadBindings() {
   } catch {}
 }
 
-onMounted(loadBindings)
+onMounted(() => {
+  loadBindings()
+  // Auto-fill cookie from bookmarklet redirect: /bind?auto=qqmusic#cookie=<encoded>
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('auto') === 'qqmusic' && window.location.hash.startsWith('#cookie=')) {
+    const decoded = decodeURIComponent(window.location.hash.slice(8))
+    history.replaceState(null, '', '/bind')
+    openModal('QQ音乐')
+    cookieValue.value = decoded
+  }
+})
 
 const phone = ref('')
 const phoneCode = ref('')

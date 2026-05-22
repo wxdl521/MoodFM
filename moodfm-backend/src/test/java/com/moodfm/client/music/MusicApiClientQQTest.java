@@ -42,7 +42,7 @@ class MusicApiClientQQTest {
                 .setBody("{\"code\":200,\"songs\":[{\"songmid\":\"001\",\"songname\":\"Test\",\"singer\":[{\"name\":\"Artist\"}]}]}")
                 .addHeader("Content-Type", "application/json"));
 
-        JsonNode result = client.searchSongs("qqmusic", "test query", 10);
+        JsonNode result = client.searchSongs("qqmusic", "test query", 10, null);
 
         RecordedRequest req = server.takeRequest();
         String path = req.getPath();

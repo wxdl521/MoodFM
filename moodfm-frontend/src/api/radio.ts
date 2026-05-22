@@ -1,6 +1,5 @@
 import api from './client';
-
-interface RadioSession { sessionId: string; moodText: string; scene?: string; status: 'active' | 'paused' | 'ended'; createdAt: string }
+import type { MoodSessionVO } from '@/types';
 
 interface SongVO { id: number; title: string; artist: string; album?: string; durationSeconds: number; coverUrl?: string; platform?: string; platformSongId?: string; playUrl?: string; recommendReason?: string }
 
@@ -14,6 +13,6 @@ export const radioApi = {
   startRadio:      (data: StartRadioData): Promise<RadioQueueVO>          => api.post('/radio/start', data),
   startFromSong:   (songId: string): Promise<RadioQueueVO>                => api.post('/radio/start-from-song', { songId: Number(songId) }),
   feedback:        (data: Feedback): Promise<void>                        => api.post('/radio/feedback', data),
-  getSessions:     (limit = 5): Promise<RadioSession[]>                   => api.get(`/radio/sessions?limit=${limit}`),
+  getSessions:     (limit = 5): Promise<MoodSessionVO[]>                  => api.get('/radio/sessions', { params: { limit } }),
   getSongUrl:      (platform: string, songId: string): Promise<string>    => api.get(`/radio/url?platform=${platform}&songId=${songId}`),
 };

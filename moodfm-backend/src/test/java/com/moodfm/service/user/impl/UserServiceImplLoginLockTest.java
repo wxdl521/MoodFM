@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -50,6 +51,9 @@ class UserServiceImplLoginLockTest {
 
     @Mock
     private ValueOperations<String, String> valueOperations;
+
+    @Mock
+    private SetOperations<String, String> setOperations;
 
     private UserServiceImpl userService;
 
@@ -105,6 +109,7 @@ class UserServiceImplLoginLockTest {
         when(userMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(user());
         when(passwordEncoder.matches("correct-password", "hash")).thenReturn(true);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(redisTemplate.opsForSet()).thenReturn(setOperations);
         when(jwtUtil.generateAccessToken(1L, "listener", "USER")).thenReturn("access-token");
         when(jwtUtil.generateRefreshToken(1L, false)).thenReturn("refresh-token");
         when(jwtUtil.parseToken("refresh-token")).thenReturn(claims);

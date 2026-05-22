@@ -63,3 +63,13 @@ export interface SongVO {
   recommendReason?: string
   urlSource?: string // "qqmusic" | "netease_fallback"
 }
+
+export interface MoodSessionVO {
+  id: number
+  rawInput: string
+  scene: string
+  startedAt: string
+  sessionId?: string
+  moodText?: string
+  createdAt?: string
+}

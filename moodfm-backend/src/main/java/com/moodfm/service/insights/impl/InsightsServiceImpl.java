@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.moodfm.domain.entity.WeeklyReport;
 import com.moodfm.domain.vo.*;
+import com.moodfm.mapper.FeedbackEventMapper;
 import com.moodfm.mapper.MoodSessionMapper;
 import com.moodfm.mapper.PlayRecordMapper;
 import com.moodfm.mapper.WeeklyReportMapper;
@@ -40,6 +41,28 @@ public class InsightsServiceImpl implements InsightsService {
     private static final List<String> GENRE_ORDER = List.of(
             "ambient", "classical", "folk", "indie", "electronic", "jazz", "pop", "rock");
 
+    // Maps AI-returned Chinese genre tokens → radar English keys
+    private static final Map<String, String> GENRE_ZH_TO_EN = Map.ofEntries(
+            Map.entry("流行",     "pop"),
+            Map.entry("华语流行", "pop"),
+            Map.entry("国语流行", "pop"),
+            Map.entry("粤语流行", "pop"),
+            Map.entry("r&b",      "pop"),
+            Map.entry("嘻哈",     "pop"),
+            Map.entry("独立",     "indie"),
+            Map.entry("indie",    "indie"),
+            Map.entry("city pop", "indie"),
+            Map.entry("摇滚",     "rock"),
+            Map.entry("电子",     "electronic"),
+            Map.entry("lo-fi",    "electronic"),
+            Map.entry("爵士",     "jazz"),
+            Map.entry("古典",     "classical"),
+            Map.entry("轻音乐",   "classical"),
+            Map.entry("民谣",     "folk"),
+            Map.entry("ambient",  "ambient"),
+            Map.entry("环境",     "ambient")
+    );
+
     private static final Map<String, String> MOOD_HEADLINE = Map.of(
             "calm",   "serene",
             "dusk",   "wistful",
@@ -63,6 +86,7 @@ public class InsightsServiceImpl implements InsightsService {
     );
 
     private final PlayRecordMapper playRecordMapper;
+    private final FeedbackEventMapper feedbackEventMapper;
     private final MoodSessionMapper moodSessionMapper;
     private final WeeklyReportMapper weeklyReportMapper;
     private final ObjectMapper objectMapper;
@@ -182,15 +206,15 @@ public class InsightsServiceImpl implements InsightsService {
         long totalSec = timeRow != null ? toLong(timeRow.get("totalSeconds")) : 0L;
         String listeningTime = formatSecondsLong(totalSec);
 
-        // Feedback accuracy
+        // Feedback accuracy: likes from feedback_events, skips from play_records
+        long likes = feedbackEventMapper.countLikes(userId, days);
         Map<String, Object> fbRow = playRecordMapper.selectFeedbackCounts(userId, days);
-        long likes = fbRow != null ? toLong(fbRow.get("likes")) : 0L;
         long skips = fbRow != null ? toLong(fbRow.get("skips")) : 0L;
         String aiAccuracy = (likes + skips) > 0
                 ? Math.round(100.0 * likes / (likes + skips)) + "%"
                 : "—";
 
-        // Top genre
+        // Top genre: prefer play_records.songs.features.genre; fall back to mood_sessions.preferred_genres
         List<Map<String, Object>> genreRows = playRecordMapper.selectGenreCounts(userId, days);
         String topGenre = "—", topGenreRatio = "";
         if (!genreRows.isEmpty()) {
@@ -198,17 +222,29 @@ public class InsightsServiceImpl implements InsightsService {
             Map<String, Object> top = genreRows.get(0);
             topGenre = capitalize(String.valueOf(top.get("genre")));
             if (total > 0) topGenreRatio = Math.round(100.0 * toLong(top.get("cnt")) / total) + "%";
+        } else {
+            // songs table has no features data; derive from AI-inferred preferred_genres
+            List<Map<String, Object>> prefRows = moodSessionMapper.selectPreferredGenreCounts(userId, days);
+            if (!prefRows.isEmpty()) {
+                long total = prefRows.stream().mapToLong(r -> toLong(r.get("cnt"))).sum();
+                Map<String, Object> top = prefRows.get(0);
+                String rawGenre = String.valueOf(top.get("genre")).trim();
+                String enGenre = GENRE_ZH_TO_EN.getOrDefault(rawGenre.toLowerCase(),
+                        GENRE_ZH_TO_EN.getOrDefault(rawGenre, rawGenre));
+                topGenre = capitalize(enGenre);
+                if (total > 0) topGenreRatio = Math.round(100.0 * toLong(top.get("cnt")) / total) + "%";
+            }
         }
 
-        // Mood key from sessions
-        List<Map<String, Object>> sessionRows = moodSessionMapper.selectRecentMoodParams(userId, days);
+        // Mood key: only count sessions where user actually typed a mood (exclude song-seed defaults)
+        List<Map<String, Object>> sessionRows = moodSessionMapper.selectRealMoodParams(userId, days);
         Map<String, Integer> moodCount = new HashMap<>();
         for (Map<String, Object> r : sessionRows) {
             double[] ve = parseValenceEnergy(String.valueOf(r.get("moodParams")));
             String m = moodFromVE(ve[0], ve[1]);
             moodCount.merge(m, 1, Integer::sum);
         }
-        String moodKey = moodCount.isEmpty() ? "calm"
+        String moodKey = moodCount.isEmpty() ? null
                 : moodCount.entrySet().stream().max(Map.Entry.comparingByValue()).get().getKey();
 
         // Week label & range
@@ -224,16 +260,16 @@ public class InsightsServiceImpl implements InsightsService {
                 .topGenre(topGenre)
                 .topGenreRatio(topGenreRatio)
                 .aiAccuracy(aiAccuracy)
-                .moodKey(MOOD_CN_LABEL.getOrDefault(moodKey, "平静"))
-                .moodSub(MOOD_HEADLINE.getOrDefault(moodKey, "serene"))
+                .moodKey(moodKey == null ? "—" : MOOD_CN_LABEL.getOrDefault(moodKey, "平静"))
+                .moodSub(moodKey == null ? "" : MOOD_HEADLINE.getOrDefault(moodKey, "serene"))
                 .weekLabel(weekLabel)
                 .weekRange(weekRange)
                 .listeningVsLast("")
                 .build();
 
-        String headline = MOOD_HEADLINE.getOrDefault(moodKey, "serene");
-        String headlineAlt = MOOD_ALT.getOrDefault(moodKey, "gentle");
-        String headlineCn = MOOD_CN_LABEL.getOrDefault(moodKey, "平静");
+        String headline = moodKey == null ? "serene" : MOOD_HEADLINE.getOrDefault(moodKey, "serene");
+        String headlineAlt = moodKey == null ? "gentle" : MOOD_ALT.getOrDefault(moodKey, "gentle");
+        String headlineCn = moodKey == null ? "平静" : MOOD_CN_LABEL.getOrDefault(moodKey, "平静");
 
         // Latest weekly report (for weeklyReportId / essay preview)
         WeeklyReport latestReport = weeklyReportMapper.selectLatestByUserId(userId);
@@ -350,12 +386,21 @@ public class InsightsServiceImpl implements InsightsService {
     @Override
     public List<GenreRadarItemVO> getGenreRadar(Long userId, int days) {
         List<Map<String, Object>> rows = playRecordMapper.selectGenreCounts(userId, days);
+
+        // songs.features.genre is not populated by the current pipeline;
+        // fall back to AI-inferred preferred_genres from mood sessions
+        if (rows.isEmpty()) {
+            rows = moodSessionMapper.selectPreferredGenreCounts(userId, days);
+        }
         if (rows.isEmpty()) return buildEmptyRadar();
 
         Map<String, Long> counts = new LinkedHashMap<>();
         for (Map<String, Object> r : rows) {
-            String g = String.valueOf(r.get("genre")).toLowerCase();
-            counts.put(g, toLong(r.get("cnt")));
+            String raw = String.valueOf(r.get("genre")).toLowerCase().trim();
+            // normalize Chinese AI genre tokens to English radar keys
+            String g = GENRE_ZH_TO_EN.getOrDefault(raw, GENRE_ZH_TO_EN.getOrDefault(
+                    String.valueOf(r.get("genre")).trim(), raw));
+            counts.merge(g, toLong(r.get("cnt")), Long::sum);
         }
         long max = counts.values().stream().mapToLong(v -> v).max().orElse(1);
 
@@ -388,7 +433,8 @@ public class InsightsServiceImpl implements InsightsService {
             long sec = toLong(r.get("totalSeconds"));
             return TopItemsVO.ArtistItem.builder()
                     .name(String.valueOf(r.get("artist")))
-                    .tag("")
+                    .playCount(toInt(r.get("playCount")))
+                    .tag(toInt(r.get("playCount")) == 1 ? "1 TRACK" : toInt(r.get("playCount")) + " TRACKS")
                     .totalTime(formatSecondsLong(sec))
                     .proportion(round2((double) sec / Math.max(maxArtistSec, 1)))
                     .build();

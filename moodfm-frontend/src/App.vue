@@ -1,12 +1,14 @@
 <template>
   <div :data-theme="uiStore.theme" :data-mood="uiStore.moodPreset">
-    <RouterView />
+    <Transition name="page" mode="out-in">
+      <RouterView :key="$route.path" />
+    </Transition>
 
     <!-- Global notification toasts -->
     <div v-if="notifications.length" style="position:fixed;top:80px;right:24px;z-index:200;display:flex;flex-direction:column;gap:8px;">
       <div
-        v-for="(n, i) in notifications"
-        :key="i"
+        v-for="n in notifications"
+        :key="n.id"
         style="background:var(--paper);border:1px solid var(--mood-b);border-radius:12px;padding:14px 18px;
                max-width:320px;box-shadow:0 4px 20px rgba(0,0,0,.12);display:flex;align-items:center;gap:10px;"
       >
@@ -22,11 +24,11 @@
           v-if="n.type === 'cookie_invalid'"
           style="font-family:var(--serif-cn);font-size:12px;padding:4px 10px;border:1px solid var(--rule);
                  border-radius:6px;background:transparent;cursor:pointer;white-space:nowrap;"
-          @click="dismiss(i); $router.push('/bind')"
+          @click="dismiss(n.id); $router.push('/bind')"
         >去绑定</button>
         <button
           style="background:transparent;border:none;cursor:pointer;color:var(--ink-3);font-size:16px;padding:0 4px;"
-          @click="dismiss(i)"
+          @click="dismiss(n.id)"
         >×</button>
       </div>
     </div>
@@ -51,3 +53,31 @@ watch(() => authStore.user?.id, (id) => {
   if (id) connect(id)
 }, { immediate: true })
 </script>
+
+<style>
+/* ── Page transitions ──────────────────────────────── */
+.page-enter-active {
+  animation: page-blur-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.page-leave-active {
+  animation: page-fade-out 0.15s ease both;
+}
+
+@keyframes page-blur-in {
+  from {
+    opacity: 0;
+    filter: blur(3px);
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
+}
+
+@keyframes page-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+</style>

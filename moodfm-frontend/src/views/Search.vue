@@ -49,12 +49,20 @@
         <div v-else class="meta" style="margin-top:8px;color:var(--ink-3)">· 换个词试试</div>
       </div>
 
-      <div v-else-if="songs.length > 0" class="results-list">
+      <TransitionGroup
+        v-else-if="songs.length > 0"
+        tag="div"
+        name="result"
+        class="results-list"
+      >
         <div
           v-for="(song, i) in songs"
           :key="song.platform + ':' + song.platformSongId"
           class="result-row"
-          :style="playingIndex === i ? { opacity: '0.6', pointerEvents: 'none' } : {}"
+          :style="[
+            playingIndex === i ? { opacity: '0.6', pointerEvents: 'none' } : {},
+            { '--i': Math.min(i, 8) }
+          ]"
           @click="playSong(song, i)"
         >
           <div class="result-index mono">{{ String(i + 1).padStart(2, '0') }}</div>
@@ -65,11 +73,14 @@
             <div class="meta result-sub">{{ song.artist }}<span v-if="song.album"> · {{ song.album }}</span></div>
           </div>
           <div class="result-meta">
-            <span class="mono" style="font-size:10px;color:var(--ink-3);">{{ song.platform?.toUpperCase() }}</span>
+            <span v-if="song.platform" class="platform-badge" :class="'platform--' + song.platform">{{ platformLabel(song.platform) }}</span>
             <span v-if="song.durationSeconds" class="mono" style="font-size:11px;color:var(--ink-3);margin-left:12px;">{{ formatDur(song.durationSeconds) }}</span>
           </div>
         </div>
-      </div>
+        <div v-if="hasMore && !loading" class="load-more-wrap">
+          <button class="load-more-btn" @click="loadMore">加载更多</button>
+        </div>
+      </TransitionGroup>
 
       <div v-else-if="!query" class="search-state">
         <div style="font-family:var(--serif-en);font-style:italic;font-size:28px;color:var(--ink-3)">Search.</div>
@@ -83,6 +94,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
 import { usePlayerStore } from '@/stores/player'
 import NavBar from '@/components/common/NavBar.vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
@@ -123,35 +135,64 @@ const loading = ref(false)
 const songs = ref<SongVO[]>([])
 const notice = ref<string | undefined>()
 const inputEl = ref<HTMLInputElement | null>(null)
+const currentLimit = ref(20)
+const hasMore = ref(true)
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+// AbortController for search requests — cancelled on each new query/mode change
+let searchAbortController: AbortController | null = null
+// AbortController for play URL requests — cancelled when user clicks a different song
+let playAbortController: AbortController | null = null
+
+async function doSearch(limit: number) {
+  // Cancel any in-flight search request before starting a new one
+  if (searchAbortController) {
+    searchAbortController.abort()
+  }
+  searchAbortController = new AbortController()
+  const signal = searchAbortController.signal
+
+  try {
+    const res = await searchApi.search(query.value.trim(), activeMode.value, limit, signal)
+    songs.value = res.songs
+    notice.value = res.notice
+    hasMore.value = res.songs.length >= limit && limit < 50
+  } catch (e: unknown) {
+    if (axios.isCancel(e)) return  // Request was intentionally cancelled — do nothing
+    songs.value = []
+  } finally {
+    if (!signal.aborted) loading.value = false  // Only clear loading if this request wasn't cancelled
+  }
+}
 
 watch([query, activeMode], () => {
   if (debounceTimer) clearTimeout(debounceTimer)
+  currentLimit.value = 20
   if (query.value.length < 2) {
     songs.value = []
     notice.value = undefined
+    hasMore.value = true
     return
   }
   loading.value = true
-  debounceTimer = setTimeout(async () => {
-    try {
-      const res = await searchApi.search(query.value.trim(), activeMode.value)
-      songs.value = res.songs
-      notice.value = res.notice
-    } catch {
-      songs.value = []
-    } finally {
-      loading.value = false
-    }
-  }, 400)
+  debounceTimer = setTimeout(() => doSearch(currentLimit.value), 400)
 })
+
+function loadMore() {
+  currentLimit.value = 50
+  loading.value = true
+  doSearch(currentLimit.value)
+}
 
 function switchMode(m: SearchMode) {
   activeMode.value = m
   songs.value = []
   notice.value = undefined
   inputEl.value?.focus()
+}
+
+function platformLabel(p: string): string {
+  return p === 'netease' ? '网易云' : p === 'qqmusic' ? 'QQ音乐' : p
 }
 
 function formatDur(secs: number): string {
@@ -178,6 +219,13 @@ function voToSong(vo: SongVO): Song {
 const playingIndex = ref<number | null>(null)
 
 async function playSong(song: SongVO, index: number) {
+  // Cancel any in-flight getSongUrl request from a previous click
+  if (playAbortController) {
+    playAbortController.abort()
+  }
+  playAbortController = new AbortController()
+  const playSignal = playAbortController.signal
+
   playingIndex.value = index
   try {
     const mapped = voToSong(song)
@@ -192,6 +240,9 @@ async function playSong(song: SongVO, index: number) {
       }
     }
 
+    // If user already clicked another song while we were fetching, bail out
+    if (playSignal.aborted) return
+
     // Set this song + remaining results as queue
     const queueSongs = songs.value.slice(index + 1).map(voToSong)
     player.setSessionId('')
@@ -200,7 +251,7 @@ async function playSong(song: SongVO, index: number) {
     player.setPlaying(true)
     router.push('/player')
   } finally {
-    playingIndex.value = null
+    if (!playSignal.aborted) playingIndex.value = null
   }
 }
 </script>
@@ -245,12 +296,21 @@ async function playSong(song: SongVO, index: number) {
   color: var(--ink-3);
   font-family: var(--serif-cn);
   font-size: 14px;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .mode-tab--active {
   background: var(--ink);
   color: var(--bg);
+}
+
+.mode-tab:not(.mode-tab--active):hover {
+  transform: scale(1.04);
+  color: var(--ink-2);
+}
+
+.mode-tab:active {
+  transform: scale(0.95);
 }
 
 /* Search bar */
@@ -378,5 +438,62 @@ async function playSong(song: SongVO, index: number) {
   display: flex;
   align-items: center;
   flex-shrink: 0;
+}
+
+.platform-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: #fff;
+  font-family: var(--serif-cn);
+  letter-spacing: .02em;
+}
+
+.platform--netease {
+  background: #e74c3c;
+}
+
+.platform--qqmusic {
+  background: #27ae60;
+}
+
+.load-more-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0 8px;
+}
+
+.load-more-btn {
+  padding: 7px 28px;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink-2);
+  font-family: var(--serif-cn);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.load-more-btn:hover {
+  background: var(--bg-2);
+  border-color: var(--ink-3);
+}
+
+/* ── Search result enter ───────────────────────────── */
+.result-enter-active {
+  animation: result-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--i, 0) * 0.04s);
+}
+
+.result-leave-active {
+  position: absolute;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+@keyframes result-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 </style>

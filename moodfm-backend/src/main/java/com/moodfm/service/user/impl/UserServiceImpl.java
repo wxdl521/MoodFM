@@ -45,7 +45,9 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -149,6 +151,10 @@ public class UserServiceImpl implements UserService {
                 String.valueOf(user.getId()),
                 Duration.ofSeconds(ttlSeconds)
         );
+        // 将 token 记录到用户级别的 Set，便于后续批量吊销
+        String userTokenSetKey = RedisKeys.format(RedisKeys.USER_REFRESH_TOKENS, user.getId());
+        redisTemplate.opsForSet().add(userTokenSetKey, refreshToken);
+        redisTemplate.expire(userTokenSetKey, 30, TimeUnit.DAYS);
 
         return LoginVO.builder()
                 .accessToken(accessToken)
@@ -187,6 +193,10 @@ public class UserServiceImpl implements UserService {
         long ttlSeconds = (refreshClaims.getExpiration().getTime() - System.currentTimeMillis()) / 1000;
         String refreshKey = RedisKeys.format(RedisKeys.REFRESH_TOKEN, refreshToken);
         redisTemplate.opsForValue().set(refreshKey, String.valueOf(user.getId()), Duration.ofSeconds(ttlSeconds));
+        // 将 token 记录到用户级别的 Set，便于后续批量吊销
+        String userTokenSetKey = RedisKeys.format(RedisKeys.USER_REFRESH_TOKENS, user.getId());
+        redisTemplate.opsForSet().add(userTokenSetKey, refreshToken);
+        redisTemplate.expire(userTokenSetKey, 30, TimeUnit.DAYS);
 
         return LoginVO.builder()
                 .accessToken(accessToken)
@@ -211,6 +221,9 @@ public class UserServiceImpl implements UserService {
         }
 
         redisTemplate.delete(refreshKey);
+        // 从用户 token Set 中移除已消费的旧 token
+        String userTokenSetKey = RedisKeys.format(RedisKeys.USER_REFRESH_TOKENS, userId);
+        redisTemplate.opsForSet().remove(userTokenSetKey, refreshToken);
 
         String newAccessToken = jwtUtil.generateAccessToken(user.getId(), user.getUsername(), user.getRole());
         String newRefreshToken = jwtUtil.generateRefreshToken(user.getId(), false);
@@ -222,6 +235,9 @@ public class UserServiceImpl implements UserService {
                 String.valueOf(userId),
                 Duration.ofSeconds(ttlSeconds)
         );
+        // 将新 token 记录到用户级别的 Set
+        redisTemplate.opsForSet().add(userTokenSetKey, newRefreshToken);
+        redisTemplate.expire(userTokenSetKey, 30, TimeUnit.DAYS);
 
         return LoginVO.builder()
                 .accessToken(newAccessToken)
@@ -246,6 +262,17 @@ public class UserServiceImpl implements UserService {
         // Revoke the refresh token so it cannot be used to obtain new access tokens
         if (refreshToken != null && !refreshToken.isBlank()) {
             redisTemplate.delete(RedisKeys.format(RedisKeys.REFRESH_TOKEN, refreshToken));
+            // 同步从用户 token Set 中移除（如能解析出 userId）
+            try {
+                Claims rc = jwtUtil.parseToken(refreshToken);
+                String sub = rc.getSubject();
+                if (sub != null) {
+                    String setKey = RedisKeys.format(RedisKeys.USER_REFRESH_TOKENS, Long.parseLong(sub));
+                    redisTemplate.opsForSet().remove(setKey, refreshToken);
+                }
+            } catch (Exception e) {
+                log.debug("Could not remove refresh token from user set during logout, ignored");
+            }
         }
     }
 
@@ -579,6 +606,10 @@ public class UserServiceImpl implements UserService {
                 String.valueOf(user.getId()),
                 Duration.ofSeconds(ttlSeconds)
         );
+        // 将 token 记录到用户级别的 Set，便于后续批量吊销
+        String userTokenSetKey = RedisKeys.format(RedisKeys.USER_REFRESH_TOKENS, user.getId());
+        redisTemplate.opsForSet().add(userTokenSetKey, refreshToken);
+        redisTemplate.expire(userTokenSetKey, 30, TimeUnit.DAYS);
 
         return LoginVO.builder()
                 .accessToken(accessToken)
@@ -658,18 +689,20 @@ public class UserServiceImpl implements UserService {
     }
 
     /**
-     * Scan Redis for all refresh tokens belonging to the given user and delete them.
-     * This prevents soft-deleted or deleted accounts from refreshing tokens.
+     * Revoke all refresh tokens for the given user via the user-scoped Set index,
+     * avoiding the blocking Redis KEYS * scan.
      */
     private void revokeAllUserRefreshTokens(Long userId) {
-        java.util.Set<String> keys = redisTemplate.keys(RedisKeys.format(RedisKeys.REFRESH_TOKEN, "*"));
-        if (keys == null || keys.isEmpty()) return;
-        for (String key : keys) {
-            String storedUserId = redisTemplate.opsForValue().get(key);
-            if (String.valueOf(userId).equals(storedUserId)) {
-                redisTemplate.delete(key);
-            }
-        }
+        String setKey = RedisKeys.format(RedisKeys.USER_REFRESH_TOKENS, userId);
+        Set<String> tokens = redisTemplate.opsForSet().members(setKey);
+        if (tokens == null || tokens.isEmpty()) return;
+        // 批量删除各个 token 键
+        List<String> tokenKeys = tokens.stream()
+                .map(token -> RedisKeys.format(RedisKeys.REFRESH_TOKEN, token))
+                .toList();
+        redisTemplate.delete(tokenKeys);
+        // 清除用户的 token 集合本身
+        redisTemplate.delete(setKey);
     }
 
     private UserVO toUserVO(User user) {

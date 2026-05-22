@@ -55,7 +55,7 @@
         <!-- RIGHT: Track info + controls -->
         <div class="player-track">
           <div class="mono" style="font-size: 10px; letter-spacing: .2em; opacity: .7">
-            TRACK {{ currentIndex }} / {{ totalTracks }} · NETEASE CLOUD
+            TRACK {{ currentIndex }} / {{ totalTracks }} · {{ platformLabel }}
           </div>
 
           <!-- Title -->
@@ -64,8 +64,8 @@
           </h1>
           <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
             <div style="font-family: var(--serif-cn); font-size: 24px; opacity: .9">{{ songArtist }}</div>
-            <span v-if="player.currentSong?.urlSource === 'netease_fallback'"
-              style="font-family: var(--mono); font-size: 9px; letter-spacing: .12em; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.6); flex-shrink: 0; white-space: nowrap;">
+            <span v-if="isFallback"
+              class="platform-fallback-badge">
               via 网易云
             </span>
           </div>
@@ -141,6 +141,7 @@
                 :fill="liked ? 'var(--mood-a)' : 'none'"
                 :stroke="liked ? 'var(--mood-a)' : 'currentColor'"
                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                :style="liked ? 'transform:scale(1.15); transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);' : 'transform:scale(1); transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);'"
               >
                 <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
               </svg>
@@ -295,6 +296,7 @@ import { blacklistApi } from '@/api/blacklist'
 import { songApi, type LyricLine } from '@/api/song'
 import { radioApi } from '@/api/radio'
 import { playlistApi } from '@/api/playlist'
+import api from '@/api/client'
 
 const router = useRouter()
 const player = usePlayerStore()
@@ -330,13 +332,11 @@ watch(() => player.volume, (newVol) => {
     const song = player.currentSong
     const sid = player.sessionId
     if (song && sid) {
-      import('@/api/client').then(mod => {
-        mod.default.post('/radio/feedback', {
-          sessionId: Number(sid),
-          songId: Number(song.id),
-          eventType: 'volume_up',
-        }).catch(() => {})
-      })
+      api.post('/radio/feedback', {
+        sessionId: Number(sid),
+        songId: Number(song.id),
+        eventType: 'volume_up',
+      }).catch(() => {})
     }
   }
   prevVolume = newVol
@@ -349,6 +349,18 @@ const stationName = computed(() =>
 
 const songTitle  = computed(() => player.currentSong?.title  ?? 'weightless')
 const songArtist = computed(() => player.currentSong?.artist ?? 'Marconi Union')
+
+const platformLabel = computed(() => {
+  switch (player.currentSong?.platform) {
+    case 'qqmusic': return 'QQ MUSIC'
+    case 'netease': return 'NETEASE CLOUD'
+    default:        return 'NETEASE CLOUD'
+  }
+})
+
+const isFallback = computed(() =>
+  player.currentSong?.urlSource === 'netease_fallback',
+)
 
 const queueCount   = computed(() => player.queue.length)
 const totalTracks  = computed(() => player.queue.length + 1)
@@ -445,14 +457,16 @@ function handlePlayPause() {
       } else {
         audio.load(player.currentSong.audioUrl).then(() => audio.play()).catch(() => {})
       }
+    } else if (player.queue.length > 0) {
+      _advanceQueue()
     } else {
       player.togglePlay()
-      startSimProgress()
     }
   }
 }
 
 // Shared: advance queue + load audio. Does NOT send feedback (callers handle that).
+// Skips songs without audioUrl automatically.
 function _advanceQueue() {
   player.next()
   const song = player.currentSong
@@ -460,24 +474,25 @@ function _advanceQueue() {
     audio.load(song.audioUrl)
       .then(() => audio.play())
       .catch(() => { if (player.queue.length > 0) _advanceQueue() })
+  } else if (player.queue.length > 0) {
+    // No audio URL — skip to next song instead of showing fake progress
+    _advanceQueue()
   } else {
     audio.stop()
-    player.setProgress(0)
+    player.setPlaying(false)
   }
 }
 
 function _sendSkipFeedback(song: typeof player.currentSong, sid: string | null, playedSecs: number, totalSecs: number) {
   if (!song?.id || !sid) return
-  import('@/api/client').then(({ default: apiClient }) => {
-    apiClient.post('/radio/feedback', {
-      sessionId: Number(sid),
-      songId: Number(song.id),
-      eventType: 'skip',
-      playedSeconds: playedSecs,
-      totalSeconds: totalSecs,
-      platform: (song as any).platform || 'netease',
-    }).catch(() => {})
-  })
+  api.post('/radio/feedback', {
+    sessionId: Number(sid),
+    songId: Number(song.id),
+    eventType: 'skip',
+    playedSeconds: playedSecs,
+    totalSeconds: totalSecs,
+    platform: song.platform || 'netease',
+  }).catch(() => {})
 }
 
 function handleNext() {
@@ -494,8 +509,6 @@ function handlePrev() {
   const song = player.currentSong
   if (song?.audioUrl) {
     audio.load(song.audioUrl).then(() => audio.play()).catch(() => {})
-  } else {
-    player.setProgress(0)
   }
 }
 
@@ -636,9 +649,12 @@ onMounted(() => {
         })
     }
   } else {
-    // No real audio URL — simulate progress
-    player.setPlaying(true)
-    startSimProgress()
+    // No real audio URL — try next song with a URL
+    if (player.queue.length > 0) {
+      _advanceQueue()
+    } else {
+      player.setPlaying(false)
+    }
   }
 })
 
@@ -859,11 +875,16 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s;
+  transition: background 0.15s, transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .ctrl-btn:hover {
   background: rgba(255, 255, 255, 0.22);
+}
+
+.ctrl-btn:active {
+  transform: scale(0.88);
+  transition-duration: 0.07s;
 }
 
 .ctrl-btn--primary {
@@ -872,10 +893,17 @@ onUnmounted(() => {
   background: #fff;
   color: var(--ink);
   border-color: transparent;
+  transition: background 0.15s, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .ctrl-btn--primary:hover {
   background: rgba(255, 255, 255, 0.9);
+  transform: scale(1.06);
+}
+
+.ctrl-btn--primary:active {
+  transform: scale(0.91);
+  transition-duration: 0.07s;
 }
 
 /* ── Chip row ─────────────────────────────────────────────────────── */
@@ -901,11 +929,16 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: background 0.15s;
+  transition: background 0.15s, transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .chip-btn:hover {
   background: rgba(255, 255, 255, 0.1);
+}
+
+.chip-btn:active {
+  transform: scale(0.93);
+  transition-duration: 0.07s;
 }
 
 .chip-btn--active {
@@ -1002,6 +1035,19 @@ onUnmounted(() => {
   color: #fff;
 }
 
+/* ── Platform fallback badge ──────────────────────────────────────── */
+.platform-fallback-badge {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .12em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.55);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 /* ── Transitions ──────────────────────────────────────────────────── */
 .fade-enter-active,
 .fade-leave-active { transition: opacity 0.25s ease; }
@@ -1012,5 +1058,39 @@ onUnmounted(() => {
 @keyframes pulse-ring {
   0%   { transform: scale(0.96); opacity: 0.7; }
   100% { transform: scale(1.18); opacity: 0; }
+}
+
+/* ── Player content enter ──────────────────────────────────────────── */
+@keyframes player-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.player-fg {
+  animation: player-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
+}
+
+.player-title {
+  animation: player-rise 0.55s cubic-bezier(0.16, 1, 0.3, 1) 0.14s both;
+}
+
+.why-card {
+  animation: player-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.24s both;
+}
+
+.ctrl-row {
+  animation: player-rise 0.45s cubic-bezier(0.16, 1, 0.3, 1) 0.34s both;
+}
+
+.chip-row {
+  animation: player-rise 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.42s both;
+}
+
+/* ── Like pulse ─────────────────────────────────────────────────────── */
+@keyframes heart-pulse {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.35); }
+  70%  { transform: scale(0.9); }
+  100% { transform: scale(1); }
 }
 </style>

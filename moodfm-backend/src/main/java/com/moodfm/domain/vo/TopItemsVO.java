@@ -16,6 +16,7 @@ public class TopItemsVO {
     public static class ArtistItem {
         private String name;
         private String tag;
+        private int playCount;
         private String totalTime;  // "1h 23m"
         private double proportion; // 0–1
     }

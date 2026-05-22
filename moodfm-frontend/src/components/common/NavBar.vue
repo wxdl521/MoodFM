@@ -194,7 +194,7 @@ const navLinks = [
   font-family: var(--mono);
   font-size: 0.7rem;
   letter-spacing: 0.06em;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  transition: color 0.15s, border-color 0.15s, background 0.15s, transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
   white-space: nowrap;
 }
 
@@ -202,6 +202,11 @@ const navLinks = [
   color: var(--ink);
   border-color: var(--ink-3);
   background: var(--bg);
+}
+
+.navbar__platform-btn:active {
+  transform: scale(0.96);
+  transition-duration: 0.07s;
 }
 
 .navbar__platform-btn-label {
@@ -225,12 +230,18 @@ const navLinks = [
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
-  transition: color 0.15s, background 0.15s;
+  transition: color 0.15s, background 0.15s, transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .navbar__icon-btn:hover {
   color: var(--ink);
   background: var(--bg-2);
+  transform: scale(1.1);
+}
+
+.navbar__icon-btn:active {
+  transform: scale(0.9);
+  transition-duration: 0.07s;
 }
 
 .navbar__avatar {
@@ -246,11 +257,17 @@ const navLinks = [
   cursor: pointer;
   overflow: hidden;
   padding: 0;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .navbar__avatar:hover {
   border-color: var(--ink-3);
+  transform: scale(1.06);
+}
+
+.navbar__avatar:active {
+  transform: scale(0.94);
+  transition-duration: 0.07s;
 }
 
 .navbar__avatar-img {

@@ -3,8 +3,6 @@ services:
     image: mysql:8.0
     container_name: moodfm-mysql
     restart: unless-stopped
-    ports:
-      - "3306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
       MYSQL_DATABASE: moodfm
@@ -24,13 +22,11 @@ services:
     image: redis:7-alpine
     container_name: moodfm-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --protected-mode no
+    command: redis-server --appendonly yes --protected-mode no --requirepass ${REDIS_PASSWORD}
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -41,8 +37,6 @@ services:
     restart: unless-stopped
     environment:
       PORT: 3000
-    ports:
-      - "3000:3000"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 15s

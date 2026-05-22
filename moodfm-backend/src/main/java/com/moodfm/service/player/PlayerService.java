@@ -2,11 +2,14 @@ package com.moodfm.service.player;
 
 import com.moodfm.domain.dto.radio.MoodInputRequest;
 import com.moodfm.domain.vo.RadioQueueVO;
+import com.moodfm.domain.vo.SessionSummaryVO;
 import com.moodfm.domain.vo.SongVO;
 
 import java.util.List;
 
 public interface PlayerService {
+    List<SessionSummaryVO> getRecentSessions(Long userId, int limit);
+
     RadioQueueVO startRadio(Long userId, MoodInputRequest request);
     RadioQueueVO startRadioFromSong(Long userId, Long songId);
     List<SongVO> getNextBatch(Long userId, Long sessionId);

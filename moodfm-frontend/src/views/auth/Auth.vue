@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import Logo from '@/components/common/Logo.vue'
@@ -19,6 +19,13 @@ const signPwd = ref('')
 const signCode = ref('')
 const countdown = ref(0)
 let cdTimer: ReturnType<typeof setInterval> | null = null
+
+onUnmounted(() => {
+  if (cdTimer) {
+    clearInterval(cdTimer)
+    cdTimer = null
+  }
+})
 
 const loading = ref(false)
 const globalError = ref('')

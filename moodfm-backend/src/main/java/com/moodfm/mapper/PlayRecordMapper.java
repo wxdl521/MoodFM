@@ -70,8 +70,7 @@ public interface PlayRecordMapper extends BaseMapper<PlayRecord> {
 
     @Select("""
         SELECT
-          SUM(CASE WHEN action = 'liked'   THEN 1 ELSE 0 END) AS likes,
-          SUM(CASE WHEN action = 'skipped' THEN 1 ELSE 0 END) AS skips
+          SUM(CASE WHEN action IN ('skipped','skipped_early') THEN 1 ELSE 0 END) AS skips
         FROM play_records
         WHERE user_id = #{userId}
           AND played_at >= DATE_SUB(NOW(), INTERVAL #{days} DAY)

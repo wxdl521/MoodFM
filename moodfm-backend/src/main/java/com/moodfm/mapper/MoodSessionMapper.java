@@ -84,6 +84,42 @@ public interface MoodSessionMapper extends BaseMapper<MoodSession> {
     @Delete("DELETE FROM mood_sessions WHERE user_id = #{userId}")
     void deleteByUserId(@Param("userId") Long userId);
 
+    /** 心情主旋律统计：只取用户主动输入心情的会话（排除 song-seed 默认会话） */
+    @Select("""
+        SELECT DATE(started_at) AS date,
+               mood_params      AS moodParams
+        FROM mood_sessions
+        WHERE user_id = #{userId}
+          AND started_at >= DATE_SUB(NOW(), INTERVAL #{days} DAY)
+          AND mood_params IS NOT NULL
+          AND scene != 'song-seed'
+        ORDER BY started_at
+        """)
+    List<Map<String, Object>> selectRealMoodParams(
+            @Param("userId") Long userId,
+            @Param("days")   int days);
+
+    /** 流派偏好统计：从心情分析结果的 preferred_genres 聚合 */
+    @Select("""
+        SELECT g.genre, COUNT(*) AS cnt
+        FROM mood_sessions ms,
+        JSON_TABLE(
+            JSON_EXTRACT(ms.mood_params, '$.preferred_genres'),
+            '$[*]' COLUMNS(genre VARCHAR(50) PATH '$')
+        ) g
+        WHERE ms.user_id = #{userId}
+          AND ms.started_at >= DATE_SUB(NOW(), INTERVAL #{days} DAY)
+          AND ms.mood_params IS NOT NULL
+          AND JSON_EXTRACT(ms.mood_params, '$.preferred_genres') IS NOT NULL
+          AND ms.scene != 'song-seed'
+        GROUP BY g.genre
+        ORDER BY cnt DESC
+        LIMIT 8
+        """)
+    List<Map<String, Object>> selectPreferredGenreCounts(
+            @Param("userId") Long userId,
+            @Param("days")   int days);
+
     @Select("""
         SELECT
           SUM(CASE WHEN valence > 0.6  AND energy > 0.6  THEN 1 ELSE 0 END) AS pos_high,

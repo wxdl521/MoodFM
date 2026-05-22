@@ -14,6 +14,7 @@ import com.moodfm.domain.dto.radio.MoodInputRequest;
 import com.moodfm.domain.entity.*;
 import com.moodfm.domain.vo.PreferencesVO;
 import com.moodfm.domain.vo.RadioQueueVO;
+import com.moodfm.domain.vo.SessionSummaryVO;
 import com.moodfm.domain.vo.SongVO;
 import com.moodfm.mapper.*;
 import com.moodfm.service.ai.MoodAnalysisService;
@@ -34,6 +35,7 @@ import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
@@ -70,10 +72,22 @@ public class PlayerServiceImpl implements PlayerService {
         bgExecutor.close();
     }
 
-    private static final String QUEUE_RERANK_KEY = "queue:rerank:%d";  // userId
     private static final int RERANK_EVERY = 3;
     private static final int REFILL_THRESHOLD = 5;
     private static final int RERANK_NEXT_N = 5;
+
+    // ===================== getRecentSessions =====================
+
+    @Override
+    public List<SessionSummaryVO> getRecentSessions(Long userId, int limit) {
+        List<Map<String, Object>> rows = sessionMapper.selectRecentSessions(userId, Math.min(limit, 20));
+        return rows.stream().map(r -> SessionSummaryVO.builder()
+                .id(toLong(r.get("id")))
+                .rawInput((String) r.get("rawInput"))
+                .scene((String) r.get("scene"))
+                .startedAt(r.get("startedAt") instanceof LocalDateTime ldt ? ldt : null)
+                .build()).toList();
+    }
 
     // ===================== startRadio =====================
 
@@ -141,7 +155,7 @@ public class PlayerServiceImpl implements PlayerService {
         }
 
         // 8. 重置重排计数器
-        redisTemplate.delete(String.format(QUEUE_RERANK_KEY, userId));
+        redisTemplate.delete(RedisKeys.format(RedisKeys.QUEUE_RERANK, userId));
 
         String moodSummary = buildMoodSummary(moodParams);
 
@@ -256,7 +270,7 @@ public class PlayerServiceImpl implements PlayerService {
             log.warn("Failed to cache queue", e);
         }
 
-        redisTemplate.delete(String.format(QUEUE_RERANK_KEY, userId));
+        redisTemplate.delete(RedisKeys.format(RedisKeys.QUEUE_RERANK, userId));
 
         return RadioQueueVO.builder()
                 .sessionId(session.getId())
@@ -359,7 +373,7 @@ public class PlayerServiceImpl implements PlayerService {
     @Override
     public void reRankIfNeeded(Long userId, Long sessionId) {
         if (userId == null) return;
-        String counterKey = String.format(QUEUE_RERANK_KEY, userId);
+        String counterKey = RedisKeys.format(RedisKeys.QUEUE_RERANK, userId);
         Long count = redisTemplate.opsForValue().increment(counterKey);
         if (count == null) count = 1L;
         redisTemplate.expire(counterKey, Duration.ofHours(2));
@@ -1059,6 +1073,7 @@ public class PlayerServiceImpl implements PlayerService {
 
     private void fillFallbackUrls(List<SongVO> songs) {
         int fallbackCount = 0;
+        int failedCount = 0;
         for (SongVO song : songs) {
             try {
                 String neteaseUrl = fallbackToNetease(
@@ -1067,13 +1082,18 @@ public class PlayerServiceImpl implements PlayerService {
                     song.setPlayUrl(neteaseUrl);
                     song.setUrlSource("netease_fallback");
                     fallbackCount++;
+                } else {
+                    failedCount++;
+                    log.debug("Netease fallback returned null for: {} - {}", song.getTitle(), song.getArtist());
                 }
             } catch (Exception e) {
-                log.debug("Netease fallback skipped for song {}", song.getTitle());
+                failedCount++;
+                log.debug("Netease fallback error for {}: {}", song.getTitle(), e.getMessage());
             }
         }
-        if (fallbackCount > 0) {
-            log.info("Netease fallback provided URLs for {}/{} QQ Music songs", fallbackCount, songs.size());
+        if (fallbackCount > 0 || failedCount > 0) {
+            log.info("Netease fallback: {}/{} QQ Music songs got URLs ({} failed)",
+                    fallbackCount, songs.size(), failedCount);
         }
     }
 
@@ -1175,6 +1195,13 @@ public class PlayerServiceImpl implements PlayerService {
         List<String> vibes = mood.getVibeKeywords();
         if (vibes == null || vibes.isEmpty()) return scene;
         return scene + " · " + String.join(" ", vibes.subList(0, Math.min(3, vibes.size())));
+    }
+
+    private Long toLong(Object val) {
+        if (val == null) return null;
+        if (val instanceof Long l) return l;
+        if (val instanceof Number n) return n.longValue();
+        try { return Long.parseLong(val.toString()); } catch (Exception e) { return null; }
     }
 
     // ===================== Session Duration Control =====================

@@ -2,6 +2,8 @@ package com.moodfm.common.exception;
 
 import com.moodfm.common.result.R;
 import com.moodfm.common.result.ResultCode;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
@@ -20,8 +22,26 @@ import java.util.stream.Collectors;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(BizException.class)
-    public R<Void> handleBizException(BizException e) {
+    public R<Void> handleBizException(BizException e, HttpServletResponse response) {
+        int httpStatus = switch (e.getCode()) {
+            case 400 -> 400;
+            case 401 -> 401;
+            case 403 -> 403;
+            case 404 -> 404;
+            case 429 -> 429;
+            default  -> 500;
+        };
+        response.setStatus(httpStatus);
         return R.fail(e.getCode(), e.getMessage());
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public R<Void> handleConstraintViolation(ConstraintViolationException e) {
+        String msg = e.getConstraintViolations().stream()
+                .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+                .collect(Collectors.joining(", "));
+        return R.fail(400, msg);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
