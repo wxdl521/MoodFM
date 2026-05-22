@@ -63,7 +63,7 @@ public class AesUtil {
     }
 
     private SecretKey getKey() {
-        byte[] keyBytes = Base64.getUrlDecoder().decode(base64Key);
+        byte[] keyBytes = Base64.getDecoder().decode(base64Key);
         return new SecretKeySpec(keyBytes, "AES");
     }
 }
