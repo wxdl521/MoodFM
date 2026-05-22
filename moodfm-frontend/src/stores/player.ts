@@ -12,10 +12,10 @@ export const usePlayerStore = defineStore('player', () => {
   const sessionId = ref<string | null>(null)
   const trackNumber = ref(1)
 
-  let lastSong: Song | null = null
+  const lastSong = ref<Song | null>(null)
 
   function setSong(song: Song) {
-    lastSong = currentSong.value
+    lastSong.value = currentSong.value
     currentSong.value = song
     progress.value = 0
     duration.value = song.duration
@@ -45,12 +45,12 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   function prev() {
-    if (!lastSong) return
+    if (!lastSong.value) return
     queue.value.unshift(currentSong.value!)
-    currentSong.value = lastSong
+    currentSong.value = lastSong.value
     progress.value = 0
-    duration.value = lastSong.duration
-    lastSong = null
+    duration.value = lastSong.value.duration
+    lastSong.value = null
   }
 
   function setProgress(v: number) {

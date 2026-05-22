@@ -90,16 +90,6 @@ const GENRE_KEY: Record<string, string> = {
   pop: 'Pop 流行', rock: 'Rock 摇滚',
 }
 
-function formatMinutes(m: number): string {
-  const h = Math.floor(m / 60); const rem = m % 60
-  return h > 0 ? `${h}h ${rem}m` : `${rem}m`
-}
-
-function formatPlayCount(count: number): string {
-  const mins = count * 4
-  return formatMinutes(mins)
-}
-
 const moodLineOption = computed(() => ({
   grid: { left: 40, right: 24, top: 16, bottom: 28 },
   tooltip: {

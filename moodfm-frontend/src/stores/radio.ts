@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { radioApi } from '@/api/radio'
 import { usePlayerStore } from './player'
-import type { RadioSession } from '@/types'
+import type { RadioSession, MoodSessionVO } from '@/types'
 
 export const useRadioStore = defineStore('radio', () => {
   const session = ref<RadioSession | null>(null)
@@ -46,7 +46,7 @@ export const useRadioStore = defineStore('radio', () => {
 
   async function fetchRecentSessions() {
     const res = await radioApi.getSessions(5)
-    recentSessions.value = (res as any[]).map(r => ({
+    recentSessions.value = res.map((r: MoodSessionVO) => ({
       sessionId: String(r.id ?? r.sessionId ?? ''),
       moodText:  r.rawInput ?? r.moodText ?? '',
       scene:     r.scene ?? '',
