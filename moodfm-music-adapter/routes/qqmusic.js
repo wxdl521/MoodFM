@@ -44,6 +44,23 @@ function extractUin(cookieStr) {
   return match ? match[1] : '0'
 }
 
+// Extract a single cookie value by name
+function extractCookieValue(cookieStr, name) {
+  const m = cookieStr.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]+)'))
+  return m ? decodeURIComponent(m[1].trim()) : ''
+}
+
+// Compute g_tk from p_skey or skey — required for authenticated QQ Music API calls
+function getGtk(skey) {
+  if (!skey) return 5381
+  let hash = 5381
+  for (let i = 0; i < skey.length; i++) {
+    hash += (hash << 5) + skey.charCodeAt(i)
+    hash = hash & 0x7fffffff
+  }
+  return hash & 0x7fffffff
+}
+
 // Generate a random device GUID (UUID without hyphens)
 function randomGuid() {
   return crypto.randomUUID().replace(/-/g, '')
@@ -288,21 +305,46 @@ function getCookie(req) {
 router.get('/user/profile', async (req, res) => {
   const cookie = getCookie(req)
   if (!cookie) return res.status(401).json({ valid: false, error: 'cookie required' })
+
+  const uin = extractUin(cookie)
+  if (!uin || uin === '0') {
+    return res.json({ valid: false })
+  }
+
+  // g_tk: prefer p_skey → skey → qm_keyst (newer QQ Music format) → qqmusic_key
+  const pSkey = extractCookieValue(cookie, 'p_skey')
+    || extractCookieValue(cookie, 'skey')
+    || extractCookieValue(cookie, 'qm_keyst')
+    || extractCookieValue(cookie, 'qqmusic_key')
+  const gtk = getGtk(pSkey)
+
+  // Modern QQ Music cookies use qm_keyst instead of p_skey; detect this for fallback
+  const hasModernKey = !!(extractCookieValue(cookie, 'qm_keyst') || extractCookieValue(cookie, 'qqmusic_key'))
+
   try {
     const response = await axios.get('https://c.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg', {
-      params: { req: 0, utf8: 1, ct: 24, cv: 0, format: 'json', g_tk: 5381 },
+      params: { req: 0, utf8: 1, ct: 24, cv: 0, format: 'json', g_tk: gtk, uin },
       headers: { Cookie: cookie, Referer: 'https://y.qq.com', 'User-Agent': UA },
       timeout: 8000,
     })
     const data = response.data
-    // code 0 = success; non-zero = cookie invalid or expired
-    if (!data || data.code !== 0) {
-      return res.json({ valid: false })
+    if (data && data.code === 0) {
+      const creator = data.data?.creator || {}
+      const username = creator.nick || creator.name || `QQ ${uin}`
+      return res.json({ valid: true, username })
     }
-    const creator = data.data?.creator || {}
-    const username = creator.nick || creator.name || ''
-    res.json({ valid: true, username })
+    // Old profile API doesn't work with modern qm_keyst cookies — soft-validate
+    if (hasModernKey) {
+      console.log('QQ Music: profile API returned code', data?.code, '— soft-validating via qm_keyst for uin:', uin)
+      return res.json({ valid: true, username: `QQ ${uin}` })
+    }
+    console.warn('QQ Music profile API code:', data?.code, 'for uin:', uin)
+    res.json({ valid: false })
   } catch (e) {
+    if (hasModernKey) {
+      console.log('QQ Music: profile API error, soft-validating via qm_keyst for uin:', uin)
+      return res.json({ valid: true, username: `QQ ${uin}` })
+    }
     console.error('QQ Music user/profile error:', e.message)
     res.json({ valid: false })
   }
@@ -399,13 +441,23 @@ router.get('/search', async (req, res) => {
   if (!keywords) return res.status(400).json({ error: 'keywords is required' })
   try {
     const response = await axios.get('https://c.y.qq.com/soso/fcgi-bin/client_search_cp', {
-      params: { new_json: 1, t: 0, aggr: 1, cr: 1, p: 1, n: parseInt(limit), w: keywords },
+      params: { new_json: 1, t: 0, aggr: 1, cr: 1, p: 1, n: parseInt(limit), w: keywords, format: 'json' },
       headers: { Referer: 'https://y.qq.com', 'User-Agent': UA },
-      timeout: 10000
+      timeout: 10000,
+      responseType: 'arraybuffer'
     })
-    const songs = response.data?.data?.song?.list || []
+    const text = Buffer.from(response.data).toString('utf8')
+    let data
+    try {
+      data = JSON.parse(text)
+    } catch {
+      const jsonpMatch = text.match(/callback\((.*)\)/s)
+      data = jsonpMatch ? JSON.parse(jsonpMatch[1]) : {}
+    }
+    const songs = data?.data?.song?.list || []
     res.json({ code: 200, songs })
   } catch (e) {
+    console.error('QQ Music search error:', e.message)
     res.json({ code: 200, songs: [] })
   }
 })
@@ -418,6 +470,12 @@ router.get('/song/url', async (req, res) => {
   const cookie = getCookie(req)
   const uin = cookie ? extractUin(cookie) : '0'
   const guid = randomGuid()
+
+  // Compute g_tk from qm_keyst/p_skey for VIP authorization
+  const skey = extractCookieValue(cookie, 'qm_keyst')
+    || extractCookieValue(cookie, 'p_skey')
+    || extractCookieValue(cookie, 'qqmusic_key')
+  const gtk = getGtk(skey)
 
   // Support comma-separated IDs for batch requests
   const songmids = id.split(',').map(s => s.trim()).filter(Boolean)
@@ -436,7 +494,7 @@ router.get('/song/url', async (req, res) => {
           platform: '20'
         }
       },
-      comm: { g_tk: 5381, uin, format: 'json', ct: 24, cv: 0 }
+      comm: { g_tk: gtk, uin, format: 'json', ct: 24, cv: 0 }
     }
 
     const response = await axios.post('https://u.y.qq.com/cgi-bin/musicu.fcg', payload, {
