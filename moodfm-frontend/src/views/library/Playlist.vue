@@ -7,6 +7,11 @@ import { playlistApi } from '@/api/playlist'
 import { songApi } from '@/api/song'
 import type { Song, Platform } from '@/types'
 
+const knownPlatforms: Platform[] = ['netease', 'qqmusic']
+function toPlatform(p?: string): Platform {
+  return knownPlatforms.includes(p as Platform) ? p as Platform : 'netease'
+}
+
 const router = useRouter()
 const route = useRoute()
 const player = usePlayerStore()
@@ -24,6 +29,7 @@ interface TrackItem {
   m: string
   mood: string
   liked: boolean
+  coverUrl?: string
 }
 
 const tracks = ref<TrackItem[]>([])
@@ -61,6 +67,7 @@ onMounted(async () => {
       m: formatDuration(s.duration),
       mood: 'CALM',
       liked: false,
+      coverUrl: s.coverUrl,
     }))
     likedMap.value = Object.fromEntries(tracks.value.map((_, i) => [i, false]))
   } catch (e: any) {
@@ -82,17 +89,22 @@ async function playSong(it: TrackItem) {
       title: it.t,
       artist: it.a,
       album: it.al || undefined,
-      platform: (playlist.value?.platform ?? 'netease') as Platform,
+      platform: toPlatform(playlist.value?.platform),
       platformSongId: it.platformSongId,
       duration: it.durationSecs,
-      coverUrl: playlist.value?.coverUrl,
+      coverUrl: it.coverUrl ?? playlist.value?.coverUrl,
       audioUrl: resp.url,
     }
     player.setSong(song)
     player.setPlaying(true)
     router.push('/player')
-  } catch {
-    alert('获取播放地址失败，请稍后重试')
+  } catch (e: any) {
+    console.error(e)
+    if (e?.code === 404) {
+      alert('该歌曲暂无可用播放地址')
+    } else {
+      alert('获取播放地址失败，请稍后重试')
+    }
   }
 }
 
@@ -108,10 +120,10 @@ async function playAll() {
         title: t.t,
         artist: t.a,
         album: t.al || undefined,
-        platform: (playlist.value?.platform ?? 'netease') as Platform,
+        platform: toPlatform(playlist.value?.platform),
         platformSongId: t.platformSongId,
         duration: t.durationSecs,
-        coverUrl: playlist.value?.coverUrl,
+        coverUrl: t.coverUrl ?? playlist.value?.coverUrl,
         audioUrl: urlMap[t.id],
       }))
     if (queue.length === 0) {
@@ -122,7 +134,8 @@ async function playAll() {
     player.setQueue(queue.slice(1))
     player.setPlaying(true)
     router.push('/player')
-  } catch {
+  } catch (e: any) {
+    console.error(e)
     alert('获取播放列表失败，请稍后重试')
   }
 }
