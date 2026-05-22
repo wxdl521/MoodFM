@@ -51,6 +51,7 @@ import { useRouter } from 'vue-router'
 import { usePlayerStore } from '@/stores/player'
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import MoodBlob from './MoodBlob.vue'
+import api from '@/api/client'
 
 const router = useRouter()
 const playerStore = usePlayerStore()
@@ -86,16 +87,14 @@ function handleNext() {
     audioPlayer.stop()
   }
   if (prevSong?.id && sid) {
-    import('@/api/client').then(({ default: apiClient }) => {
-      apiClient.post('/radio/feedback', {
-        sessionId: Number(sid),
-        songId: Number(prevSong.id),
-        eventType: 'skip',
-        playedSeconds: playedSecs,
-        totalSeconds: totalSecs,
-        platform: (prevSong as any).platform || 'netease',
-      }).catch(() => {})
-    })
+    api.post('/radio/feedback', {
+      sessionId: Number(sid),
+      songId: Number(prevSong.id),
+      eventType: 'skip',
+      playedSeconds: playedSecs,
+      totalSeconds: totalSecs,
+      platform: prevSong.platform || 'netease',
+    }).catch(() => {})
   }
 }
 

@@ -296,6 +296,7 @@ import { blacklistApi } from '@/api/blacklist'
 import { songApi, type LyricLine } from '@/api/song'
 import { radioApi } from '@/api/radio'
 import { playlistApi } from '@/api/playlist'
+import api from '@/api/client'
 
 const router = useRouter()
 const player = usePlayerStore()
@@ -331,13 +332,11 @@ watch(() => player.volume, (newVol) => {
     const song = player.currentSong
     const sid = player.sessionId
     if (song && sid) {
-      import('@/api/client').then(mod => {
-        mod.default.post('/radio/feedback', {
-          sessionId: Number(sid),
-          songId: Number(song.id),
-          eventType: 'volume_up',
-        }).catch(() => {})
-      })
+      api.post('/radio/feedback', {
+        sessionId: Number(sid),
+        songId: Number(song.id),
+        eventType: 'volume_up',
+      }).catch(() => {})
     }
   }
   prevVolume = newVol
@@ -360,7 +359,7 @@ const platformLabel = computed(() => {
 })
 
 const isFallback = computed(() =>
-  (player.currentSong as any)?.urlSource === 'netease_fallback',
+  player.currentSong?.urlSource === 'netease_fallback',
 )
 
 const queueCount   = computed(() => player.queue.length)
@@ -486,16 +485,14 @@ function _advanceQueue() {
 
 function _sendSkipFeedback(song: typeof player.currentSong, sid: string | null, playedSecs: number, totalSecs: number) {
   if (!song?.id || !sid) return
-  import('@/api/client').then(({ default: apiClient }) => {
-    apiClient.post('/radio/feedback', {
-      sessionId: Number(sid),
-      songId: Number(song.id),
-      eventType: 'skip',
-      playedSeconds: playedSecs,
-      totalSeconds: totalSecs,
-      platform: (song as any).platform || 'netease',
-    }).catch(() => {})
-  })
+  api.post('/radio/feedback', {
+    sessionId: Number(sid),
+    songId: Number(song.id),
+    eventType: 'skip',
+    playedSeconds: playedSecs,
+    totalSeconds: totalSecs,
+    platform: song.platform || 'netease',
+  }).catch(() => {})
 }
 
 function handleNext() {
