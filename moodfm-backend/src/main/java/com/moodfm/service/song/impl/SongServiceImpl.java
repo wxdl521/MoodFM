@@ -2,6 +2,7 @@ package com.moodfm.service.song.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.moodfm.client.music.MusicApiClient;
 import com.moodfm.client.music.SongApiClient;
 import com.moodfm.common.util.AesUtil;
 import com.moodfm.common.util.MusicResponseParser;
@@ -36,6 +37,7 @@ public class SongServiceImpl implements SongService {
 
     private final PlatformBindingService bindingService;
     private final SongApiClient songApiClient;
+    private final MusicApiClient musicApiClient;
     private final FeedbackEventMapper feedbackEventMapper;
     private final PlatformSongMappingMapper platformSongMappingMapper;
     private final SongMapper songMapper;
@@ -211,6 +213,73 @@ public class SongServiceImpl implements SongService {
             log.warn("getLyrics failed for song {}", songId, e);
             return List.of();
         }
+    }
+
+    @Override
+    public String getAudioUrl(Long userId, Long songId) {
+        PlatformSongMapping mapping = platformSongMappingMapper.selectOne(
+                new LambdaQueryWrapper<PlatformSongMapping>()
+                        .eq(PlatformSongMapping::getSongId, songId)
+                        .last("LIMIT 1"));
+        if (mapping == null) {
+            log.warn("No platform mapping for song {}", songId);
+            return null;
+        }
+        try {
+            PlatformBinding binding = bindingService.getValidBinding(userId, mapping.getPlatform());
+            if (binding == null) {
+                binding = bindingService.getDefaultBinding(userId);
+            }
+            String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
+            String url = musicApiClient.getSongUrl(mapping.getPlatform(), mapping.getPlatformSongId(), cookie);
+            if (url == null || url.isBlank()) {
+                log.warn("Empty audio URL for song {} platform={}", songId, mapping.getPlatform());
+            }
+            return url;
+        } catch (Exception e) {
+            log.warn("getAudioUrl failed for song {} user {}", songId, userId, e);
+            return null;
+        }
+    }
+
+    @Override
+    public Map<Long, String> getAudioUrls(Long userId, List<Long> songIds) {
+        if (songIds == null || songIds.isEmpty()) return Map.of();
+
+        List<PlatformSongMapping> mappings = platformSongMappingMapper.selectList(
+                new LambdaQueryWrapper<PlatformSongMapping>()
+                        .in(PlatformSongMapping::getSongId, songIds));
+        if (mappings.isEmpty()) return Map.of();
+
+        Map<String, List<PlatformSongMapping>> byPlatform = mappings.stream()
+                .collect(Collectors.groupingBy(PlatformSongMapping::getPlatform));
+
+        Map<Long, String> result = new java.util.HashMap<>();
+
+        for (Map.Entry<String, List<PlatformSongMapping>> entry : byPlatform.entrySet()) {
+            String platform = entry.getKey();
+            List<PlatformSongMapping> platformMappings = entry.getValue();
+            try {
+                PlatformBinding binding = bindingService.getValidBinding(userId, platform);
+                if (binding == null) binding = bindingService.getDefaultBinding(userId);
+                String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
+
+                List<String> platformIds = platformMappings.stream()
+                        .map(PlatformSongMapping::getPlatformSongId)
+                        .collect(Collectors.toList());
+                Map<String, String> urlMap = musicApiClient.getSongUrls(platform, platformIds, cookie);
+
+                for (PlatformSongMapping m : platformMappings) {
+                    String url = urlMap.get(m.getPlatformSongId());
+                    if (url != null && !url.isBlank()) {
+                        result.put(m.getSongId(), url);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("getAudioUrls batch failed for platform {}", platform, e);
+            }
+        }
+        return result;
     }
 
     // -- 解析工具 --
