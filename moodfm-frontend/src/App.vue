@@ -1,6 +1,8 @@
 <template>
   <div :data-theme="uiStore.theme" :data-mood="uiStore.moodPreset">
-    <RouterView />
+    <Transition name="page" mode="out-in">
+      <RouterView :key="$route.path" />
+    </Transition>
 
     <!-- Global notification toasts -->
     <div v-if="notifications.length" style="position:fixed;top:80px;right:24px;z-index:200;display:flex;flex-direction:column;gap:8px;">
@@ -51,3 +53,31 @@ watch(() => authStore.user?.id, (id) => {
   if (id) connect(id)
 }, { immediate: true })
 </script>
+
+<style>
+/* ── Page transitions ──────────────────────────────── */
+.page-enter-active {
+  animation: page-blur-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.page-leave-active {
+  animation: page-fade-out 0.15s ease both;
+}
+
+@keyframes page-blur-in {
+  from {
+    opacity: 0;
+    filter: blur(3px);
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
+}
+
+@keyframes page-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+</style>
