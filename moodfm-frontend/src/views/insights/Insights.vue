@@ -45,22 +45,30 @@ async function handleShare() {
 
 // Reactive data — populated from API; fallback values shown until loaded
 const statCards = ref([
-  { en: 'TOTAL · LISTENING', value: '—',     cn: '本周听歌时长', sub: '加载中…' },
-  { en: 'TOP · GENRE',       value: '—',     cn: '最常听的流派', sub: '加载中…' },
-  { en: 'AI · ACCURACY',     value: '82%',   cn: 'AI 推荐准确率', sub: '红心 ÷ 跳过' },
-  { en: 'MOOD · KEY',        value: '—',     cn: '心情主旋律',   sub: '加载中…' },
+  { en: 'TOTAL · LISTENING', value: '—', cn: '本周听歌时长', sub: '—' },
+  { en: 'TOP · GENRE',       value: '—', cn: '最常听的流派', sub: '—' },
+  { en: 'AI · ACCURACY',     value: '—', cn: 'AI 推荐准确率', sub: '红心 ÷ 跳过' },
+  { en: 'MOOD · KEY',        value: '—', cn: '心情主旋律',   sub: '—' },
 ])
 
-const artists = ref([
-  { n: 'Marconi Union', en: 'AMBIENT · UK',   t: '2h 12m', p: 1 },
-  { n: '青葉市子',       en: 'FOLK · JP',      t: '1h 48m', p: 0.78 },
-  { n: 'Arvo Pärt',     en: 'CLASSICAL · EE', t: '1h 22m', p: 0.6 },
-  { n: 'Bonobo',        en: 'DOWNTEMPO · UK', t: '58m',    p: 0.42 },
-  { n: '雷光夏',        en: 'INDIE · TW',      t: '42m',    p: 0.3 },
-])
+const artists = ref<Array<{ n: string; en: string; t: string; p: number }>>([])
 
-const pastWeeks = ref(['焦灼的尝试', '缓慢上升', '潮湿但安静', '久违的明亮'])
-const pastMoods = ref(['energetic', 'focused', 'melancholy', 'dusk'])
+// ── Dynamic week / date labels ────────────────────────────────────
+function getISOWeek(d: Date): number {
+  const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+  tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7))
+  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1))
+  return Math.ceil(((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+}
+function computeDateRange(d: number): string {
+  const end = new Date()
+  const start = new Date(); start.setDate(end.getDate() - d + 1)
+  const fmt = (dt: Date) => `${dt.getMonth() + 1}/${String(dt.getDate()).padStart(2, '0')}`
+  return `${fmt(start)} → ${fmt(end)}`
+}
+const now = new Date()
+const headerWeekLabel = ref(`WEEK ${getISOWeek(now)} / ${now.getFullYear()}`)
+const headerDateRange = ref(computeDateRange(7))
 
 const headline = ref('tender')
 const headlineAlt = ref('awake')
@@ -69,14 +77,11 @@ const essayBody = ref('')
 const weeklyReportId = ref<number | null>(null)
 const previousReports = ref<Array<{ id: number; week: number; year: number; title: string; mood: string }>>([])
 
-// Chart data refs (fallback = 30-day mock)
-const trendDates = ref(Array.from({ length: 30 }, (_, i) => {
-  const d = new Date(); d.setDate(d.getDate() - 29 + i)
-  return `${d.getMonth() + 1}/${d.getDate()}`
-}))
-const trendMood  = ref([5.2,5.5,4.8,5.0,5.8,6.1,5.9,6.3,6.0,5.7,5.4,5.9,6.2,6.5,6.1,5.8,5.5,5.9,6.4,6.7,6.2,5.9,6.1,6.5,6.8,6.3,5.8,6.2,6.6,7.0])
-const trendSong  = ref([5.0,5.2,4.6,4.9,5.5,5.9,5.7,6.0,5.8,5.5,5.3,5.7,6.0,6.2,5.9,5.6,5.4,5.7,6.1,6.5,6.0,5.7,5.9,6.2,6.5,6.1,5.6,6.0,6.3,6.7])
-const genreValues = ref([95, 70, 60, 50, 40, 35, 20, 15])
+// Chart data refs — initialized empty, filled by API
+const trendDates = ref<string[]>([])
+const trendMood  = ref<number[]>([])
+const trendSong  = ref<number[]>([])
+const genreValues = ref<number[]>([0, 0, 0, 0, 0, 0, 0, 0])
 
 const RADAR_AXES = ['Ambient 环境', 'Classical 古典', 'Folk 民谣', 'Indie 独立', 'Electronic 电子', 'Jazz 爵士', 'Pop 流行', 'Rock 摇滚']
 const GENRE_KEY: Record<string, string> = {
@@ -187,11 +192,11 @@ async function fetchInsights() {
       insightsApi.getSummary(d).catch(() => null as any),
     ])
 
-    // MoodTrendVO: { labels, userMood, songMood }
+    // MoodTrendVO: { labels, userMood, songMood } — values are 0-1, scale to 0-10 for chart
     if (trend?.labels?.length) {
       trendDates.value = trend.labels
-      trendMood.value = trend.userMood
-      trendSong.value = trend.songMood
+      trendMood.value = trend.userMood.map((v: number) => Math.round(v * 100) / 10)
+      trendSong.value = trend.songMood.map((v: number) => Math.round(v * 100) / 10)
     }
 
     // GenreRadarItemVO[]: { genre, value(0-1) }
@@ -232,6 +237,7 @@ async function fetchInsights() {
         statCards.value[2].value = s.aiAccuracy || '—'
         statCards.value[3].value = s.moodKey || '—'
         statCards.value[3].sub = s.moodSub || '—'
+        if (s.weekRange) headerDateRange.value = s.weekRange.replace(' — ', ' → ')
       }
     }
   } catch {
@@ -240,7 +246,10 @@ async function fetchInsights() {
   }
 }
 
-watch(period, () => { fetchInsights() })
+watch(period, () => {
+  headerDateRange.value = computeDateRange(days.value)
+  fetchInsights()
+})
 
 onMounted(() => { fetchInsights() })
 </script>
@@ -268,7 +277,7 @@ onMounted(() => { fetchInsights() })
     </div>
 
     <div ref="contentRef" style="padding:40px 56px;">
-      <div class="meta">YOUR EMOTIONAL ATLAS · 个人情绪图鉴 · WEEK 18 / 2026</div>
+      <div class="meta">YOUR EMOTIONAL ATLAS · 个人情绪图鉴 · {{ headerWeekLabel }}</div>
       <h1 class="display" style="font-size:144px;margin:12px 0 0;">You felt</h1>
       <h1 class="display" style="font-size:144px;margin:0;color:var(--ink-3);">
         <em :style="{ background:'linear-gradient(120deg,var(--mood-a),var(--mood-b),var(--mood-c))',WebkitBackgroundClip:'text',color:'transparent' }">{{ headline }}</em>
@@ -295,7 +304,7 @@ onMounted(() => { fetchInsights() })
             <div class="meta">FIG. 01 · MOOD CURVE</div>
             <div class="display-cn" style="font-size:30px;margin-top:4px;">心情曲线 vs 听歌情绪</div>
           </div>
-          <div class="meta">WEEK 18 · MAY 12 → MAY 18</div>
+          <div class="meta">{{ headerDateRange }}</div>
         </div>
         <div style="margin-top:20px;height:280px;border:1px solid var(--rule);border-radius:18px;
                     padding:24px 24px 8px;background:var(--paper);">
@@ -325,6 +334,10 @@ onMounted(() => { fetchInsights() })
           <div class="meta">FIG. 03 · TOP ARTISTS</div>
           <div class="display-cn" style="font-size:30px;margin-top:4px;">本周 TOP 艺人</div>
           <div style="margin-top:20px;">
+            <div v-if="artists.length === 0 && !loading"
+              style="padding:32px 0;text-align:center;font-family:var(--serif-cn);font-size:14px;color:var(--ink-3);">
+              暂无数据 · 开始听歌后将自动更新
+            </div>
             <div v-for="(a,i) in artists" :key="a.n" style="padding:14px 0;border-bottom:1px solid var(--rule);">
               <div class="between">
                 <div class="row" style="gap:12px;">
@@ -362,7 +375,7 @@ onMounted(() => { fetchInsights() })
           </p>
           <div class="row" style="margin-top:24px;gap:10px;">
             <RouterLink to="/insights/weekly" class="btn" style="background:#fff;color:var(--ink);border-color:#fff;text-decoration:none;">查看完整周报 →</RouterLink>
-            <button class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.4);" @click="handleShare">生成分享长图</button>
+            <button class="btn btn-ghost btn-ghost--on-dark" style="color:#fff;border-color:rgba(255,255,255,.4);" @click="handleShare">生成分享长图</button>
           </div>
         </div>
       </div>
@@ -370,10 +383,10 @@ onMounted(() => { fetchInsights() })
       <div style="margin-top:56px;">
         <div class="meta">PREVIOUS ISSUES · 历史报告</div>
         <div class="display-cn" style="font-size:30px;margin-top:4px;margin-bottom:20px;">过往周报</div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;">
+        <div v-if="previousReports.length" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;">
           <div
-            v-for="r in (previousReports.length ? previousReports : pastWeeks.map((t, i) => ({ id: i, week: 17 - i, year: 2026, title: t, mood: pastMoods[i] })))"
-            :key="r.id ?? r.title"
+            v-for="r in previousReports"
+            :key="r.id"
             :data-mood="r.mood"
             style="padding:14px;border:1px solid var(--rule);border-radius:16px;background:var(--paper);cursor:pointer;"
           >
@@ -381,6 +394,10 @@ onMounted(() => { fetchInsights() })
             <div class="meta">WEEK {{ r.week }} · {{ r.year }}</div>
             <div :style="{ fontFamily:'var(--serif-cn)',fontSize:'17px',fontWeight:500,marginTop:'4px' }">{{ r.title }}</div>
           </div>
+        </div>
+        <div v-else style="padding:40px 0;text-align:center;border:1px solid var(--rule);border-radius:16px;background:var(--paper);">
+          <div style="font-family:var(--serif-en);font-style:italic;font-size:22px;color:var(--ink-3);">No reports yet.</div>
+          <div style="font-family:var(--serif-cn);font-size:13px;color:var(--ink-3);margin-top:6px;">持续使用后，系统将每周自动生成一份专属周报</div>
         </div>
       </div>
     </div>
