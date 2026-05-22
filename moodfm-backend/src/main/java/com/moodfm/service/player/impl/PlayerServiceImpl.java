@@ -1059,6 +1059,7 @@ public class PlayerServiceImpl implements PlayerService {
 
     private void fillFallbackUrls(List<SongVO> songs) {
         int fallbackCount = 0;
+        int failedCount = 0;
         for (SongVO song : songs) {
             try {
                 String neteaseUrl = fallbackToNetease(
@@ -1067,13 +1068,18 @@ public class PlayerServiceImpl implements PlayerService {
                     song.setPlayUrl(neteaseUrl);
                     song.setUrlSource("netease_fallback");
                     fallbackCount++;
+                } else {
+                    failedCount++;
+                    log.debug("Netease fallback returned null for: {} - {}", song.getTitle(), song.getArtist());
                 }
             } catch (Exception e) {
-                log.debug("Netease fallback skipped for song {}", song.getTitle());
+                failedCount++;
+                log.debug("Netease fallback error for {}: {}", song.getTitle(), e.getMessage());
             }
         }
-        if (fallbackCount > 0) {
-            log.info("Netease fallback provided URLs for {}/{} QQ Music songs", fallbackCount, songs.size());
+        if (fallbackCount > 0 || failedCount > 0) {
+            log.info("Netease fallback: {}/{} QQ Music songs got URLs ({} failed)",
+                    fallbackCount, songs.size(), failedCount);
         }
     }
 
