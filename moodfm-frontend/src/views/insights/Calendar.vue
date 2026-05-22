@@ -1,19 +1,18 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
-import NavBar from '@/components/common/NavBar.vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import { insightsApi } from '@/api/insights'
 
 const MOOD_PALETTE: Record<string, [string, string]> = {
-  calm:       ['#e9f0e6', '#9bb1a4'],
-  dusk:       ['#f3d7c6', '#d28a9a'],
-  blue:       ['#cbd6e8', '#6b7c9a'],
-  energy:     ['#f8c87b', '#d96343'],
-  focus:      ['#cfe1d8', '#6f9a87'],
-  melancholy: ['#cbd6e8', '#6b7c9a'],
-  energetic:  ['#f8c87b', '#d96343'],
-  focused:    ['#cfe1d8', '#6f9a87'],
+  calm:       ['#a8d8c0', '#2e9e72'],   // mint green — 平静
+  dusk:       ['#ffb8a0', '#d94830'],   // warm coral — 温柔
+  blue:       ['#90b8e8', '#1a52a8'],   // sky blue — 忧郁
+  energy:     ['#ffe066', '#c88a00'],   // golden — 高能
+  focus:      ['#a8d890', '#2e8e28'],   // leaf green — 专注
+  melancholy: ['#90b8e8', '#1a52a8'],
+  energetic:  ['#ffe066', '#c88a00'],
+  focused:    ['#a8d890', '#2e8e28'],
   empty:      ['transparent', 'transparent'],
 }
 
@@ -165,7 +164,6 @@ onMounted(() => { loadMonth() })
 
 <template>
   <div style="min-height:100vh;background:var(--bg);">
-    <NavBar />
 
     <div style="position:sticky;top:62px;z-index:5;background:var(--bg);padding:22px 56px;
                 border-bottom:1px solid var(--rule);display:flex;align-items:center;justify-content:space-between;">
