@@ -1,6 +1,5 @@
 <template>
   <div style="min-height: 100vh; background: var(--bg); padding-bottom: 100px;">
-    <NavBar />
 
     <div class="page-pad">
       <div class="meta">SECTION · BLACKLIST · 黑名单</div>
@@ -64,7 +63,6 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import NavBar from '@/components/common/NavBar.vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import { blacklistApi } from '@/api/blacklist'
 

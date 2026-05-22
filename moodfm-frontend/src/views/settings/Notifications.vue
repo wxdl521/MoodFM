@@ -1,6 +1,5 @@
 <template>
   <div style="min-height: 100vh; background: var(--bg); padding-bottom: 100px;">
-    <NavBar />
 
     <div class="page-pad" style="max-width: 880px;">
       <div class="meta">NOTIFICATIONS · 通知</div>
@@ -88,7 +87,6 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import NavBar from '@/components/common/NavBar.vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import { userApi } from '@/api/user'
 

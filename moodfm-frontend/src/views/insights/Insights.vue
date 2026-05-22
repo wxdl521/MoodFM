@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import NavBar from '@/components/common/NavBar.vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import VChart from 'vue-echarts'
@@ -248,7 +247,6 @@ onMounted(() => { fetchInsights() })
   <div style="min-height:100vh;background:var(--bg);position:relative;padding-bottom:100px;">
     <div class="mood-blob drift" style="width:680px;height:680px;left:-180px;top:-200px;opacity:.35;" />
 
-    <NavBar />
 
     <div style="position:sticky;top:62px;z-index:5;background:var(--bg);padding:22px 56px;
                 border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center;">

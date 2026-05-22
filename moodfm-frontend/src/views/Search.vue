@@ -2,7 +2,6 @@
   <div class="search-page">
     <div class="mood-blob drift" style="width:600px;height:600px;right:-180px;top:-180px;opacity:0.25;z-index:0;" />
 
-    <NavBar />
 
     <div class="search-wrap">
       <!-- Mode tabs -->
@@ -96,7 +95,6 @@ import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { usePlayerStore } from '@/stores/player'
-import NavBar from '@/components/common/NavBar.vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import { searchApi } from '@/api/search'
 import { radioApi } from '@/api/radio'

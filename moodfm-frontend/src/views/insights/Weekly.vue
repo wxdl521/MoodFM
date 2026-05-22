@@ -1,6 +1,5 @@
 <template>
   <div style="min-height: 100vh; background: var(--bg); padding-bottom: 100px;">
-    <NavBar />
 
     <div style="position: sticky; top: 62px; z-index: 10; background: var(--bg); border-bottom: 1px solid var(--rule); padding: 0 56px; display: flex; align-items: center; justify-content: space-between; height: 52px;">
       <RouterLink to="/insights" class="btn-pill" style="text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">‹ Insights</RouterLink>
@@ -136,7 +135,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
-import NavBar from '@/components/common/NavBar.vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import VChart from 'vue-echarts'

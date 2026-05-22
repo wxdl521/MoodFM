@@ -1,5 +1,6 @@
 <template>
   <div :data-theme="uiStore.theme" :data-mood="uiStore.moodPreset" style="overflow-x:hidden;min-height:100vh;">
+    <NavBar v-if="route.meta.showNav" />
     <Transition :name="transitionName" mode="out-in">
       <RouterView :key="$route.path" />
     </Transition>
@@ -37,11 +38,14 @@
 
 <script setup lang="ts">
 import { watch, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifications } from '@/composables/useNotifications'
 import { useNavDirection } from '@/composables/useNavDirection'
+import NavBar from '@/components/common/NavBar.vue'
 
+const route = useRoute()
 const uiStore = useUiStore()
 const authStore = useAuthStore()
 const { notifications, connect, dismiss } = useNotifications()

@@ -6,8 +6,6 @@
       style="width: 760px; height: 760px; right: -220px; top: -260px; opacity: 0.4; z-index: 0;"
     />
 
-    <!-- Top nav -->
-    <NavBar />
 
     <!-- Main two-column content -->
     <div class="home-content">
@@ -185,7 +183,6 @@ import { useAuthStore } from '@/stores/auth'
 import { useRadioStore } from '@/stores/radio'
 import { usePlayerStore } from '@/stores/player'
 import { useUiStore } from '@/stores/ui'
-import NavBar from '@/components/common/NavBar.vue'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import MoodWheel from './MoodWheel.vue'

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
-import NavBar from '@/components/common/NavBar.vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
@@ -70,7 +69,6 @@ onMounted(async () => {
 
 <template>
   <div style="min-height:100vh;background:var(--bg);padding-bottom:100px;">
-    <NavBar />
 
     <div style="position:sticky;top:62px;z-index:5;background:var(--bg);padding:22px 56px;
                 border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center;">

@@ -175,10 +175,9 @@ onUnmounted(() => {
 
 <template>
   <div style="min-height:100vh;background:var(--bg);padding-bottom:80px;">
-    <div style="position:sticky;top:0;z-index:5;background:var(--bg);
+    <div style="position:sticky;top:62px;z-index:5;background:var(--bg);
                 border-bottom:1px solid var(--rule);">
       <div style="padding:22px 56px;display:flex;justify-content:space-between;align-items:center;">
-        <button class="btn-pill" @click="router.back()">← Home</button>
         <div class="meta">SECTION VII · HISTORY · 历史记录</div>
         <div style="position:relative;">
           <button class="btn-pill" @click="showFilter = !showFilter">

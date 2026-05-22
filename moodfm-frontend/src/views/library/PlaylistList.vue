@@ -46,9 +46,8 @@ onMounted(async () => {
 
 <template>
   <div style="min-height:100vh;background:var(--bg);padding-bottom:80px;">
-    <div style="position:sticky;top:0;z-index:5;background:var(--bg);padding:22px 56px;
+    <div style="position:sticky;top:62px;z-index:5;background:var(--bg);padding:22px 56px;
                 border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center;">
-      <button class="btn-pill" @click="router.back()">← Home</button>
       <div class="meta">SECTION V · LIBRARY · 我的歌单</div>
       <button class="btn-pill">+ 新建</button>
     </div>

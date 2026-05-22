@@ -7,6 +7,7 @@ declare module 'vue-router' {
     requiresAdmin?: boolean
     depth?: number
     order?: number
+    showNav?: boolean
   }
 }
 
@@ -19,29 +20,29 @@ const router = createRouter({
     { path: '/onboarding', component: () => import('@/views/Onboarding.vue'),     meta: { requiresAuth: true, depth: 0, order: 2 } },
 
     // ── Depth 1: Main entry ───────────────────────────────────────────
-    { path: '/home', component: () => import('@/views/home/Home.vue'), meta: { requiresAuth: true, depth: 1, order: 0 } },
+    { path: '/home', component: () => import('@/views/home/Home.vue'), meta: { requiresAuth: true, depth: 1, order: 0, showNav: true } },
 
     // ── Depth 2: Main features (bottom nav order) ─────────────────────
-    { path: '/search',    component: () => import('@/views/Search.vue'),               meta: { requiresAuth: true, depth: 2, order: 0 } },
+    { path: '/search',    component: () => import('@/views/Search.vue'),               meta: { requiresAuth: true, depth: 2, order: 0, showNav: true } },
     { path: '/player',    component: () => import('@/views/player/Player.vue'),        meta: { requiresAuth: true, depth: 2, order: 1 } },
-    { path: '/playlists', component: () => import('@/views/library/PlaylistList.vue'), meta: { requiresAuth: true, depth: 2, order: 2 } },
+    { path: '/playlists', component: () => import('@/views/library/PlaylistList.vue'), meta: { requiresAuth: true, depth: 2, order: 2, showNav: true } },
     { path: '/likes',     component: () => import('@/views/library/Loved.vue'),        meta: { requiresAuth: true, depth: 2, order: 3 } },
-    { path: '/history',   component: () => import('@/views/library/History.vue'),      meta: { requiresAuth: true, depth: 2, order: 4 } },
-    { path: '/insights',  component: () => import('@/views/insights/Insights.vue'),    meta: { requiresAuth: true, depth: 2, order: 5 } },
-    { path: '/settings',  component: () => import('@/views/settings/Settings.vue'),    meta: { requiresAuth: true, depth: 2, order: 6 } },
+    { path: '/history',   component: () => import('@/views/library/History.vue'),      meta: { requiresAuth: true, depth: 2, order: 4, showNav: true } },
+    { path: '/insights',  component: () => import('@/views/insights/Insights.vue'),    meta: { requiresAuth: true, depth: 2, order: 5, showNav: true } },
+    { path: '/settings',  component: () => import('@/views/settings/Settings.vue'),    meta: { requiresAuth: true, depth: 2, order: 6, showNav: true } },
     { path: '/bind',      component: () => import('@/views/Bind.vue'),                 meta: { requiresAuth: true, depth: 2, order: 7 } },
-    { path: '/profile',   component: () => import('@/views/Profile.vue'),              meta: { requiresAuth: true, depth: 2, order: 8 } },
+    { path: '/profile',   component: () => import('@/views/Profile.vue'),              meta: { requiresAuth: true, depth: 2, order: 8, showNav: true } },
 
     // ── Depth 3: Sub-pages ────────────────────────────────────────────
     { path: '/playlists/smart/:type',  component: () => import('@/views/library/SmartPlaylistDetail.vue'), meta: { requiresAuth: true, depth: 3 } },
     { path: '/playlists/:id',          component: () => import('@/views/library/Playlist.vue'),            meta: { requiresAuth: true, depth: 3 } },
     { path: '/song/:id',               component: () => import('@/views/library/SongDetail.vue'),          meta: { requiresAuth: true, depth: 3 } },
-    { path: '/insights/calendar',      component: () => import('@/views/insights/Calendar.vue'),           meta: { requiresAuth: true, depth: 3 } },
-    { path: '/insights/weekly/:week?', component: () => import('@/views/insights/Weekly.vue'),             meta: { requiresAuth: true, depth: 3 } },
-    { path: '/insights/annual/:year?', component: () => import('@/views/insights/AnnualReport.vue'),       meta: { requiresAuth: true, depth: 3 } },
+    { path: '/insights/calendar',      component: () => import('@/views/insights/Calendar.vue'),           meta: { requiresAuth: true, depth: 3, showNav: true } },
+    { path: '/insights/weekly/:week?', component: () => import('@/views/insights/Weekly.vue'),             meta: { requiresAuth: true, depth: 3, showNav: true } },
+    { path: '/insights/annual/:year?', component: () => import('@/views/insights/AnnualReport.vue'),       meta: { requiresAuth: true, depth: 3, showNav: true } },
     { path: '/settings/platforms',     component: () => import('@/views/settings/Platforms.vue'),          meta: { requiresAuth: true, depth: 3 } },
-    { path: '/settings/blacklist',     component: () => import('@/views/library/Blacklist.vue'),           meta: { requiresAuth: true, depth: 3 } },
-    { path: '/settings/notifications', component: () => import('@/views/settings/Notifications.vue'),     meta: { requiresAuth: true, depth: 3 } },
+    { path: '/settings/blacklist',     component: () => import('@/views/library/Blacklist.vue'),           meta: { requiresAuth: true, depth: 3, showNav: true } },
+    { path: '/settings/notifications', component: () => import('@/views/settings/Notifications.vue'),     meta: { requiresAuth: true, depth: 3, showNav: true } },
 
     // ── Depth 4: Admin ───────────────────────────────────────────────────
     {

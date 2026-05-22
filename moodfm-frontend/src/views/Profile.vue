@@ -1,6 +1,5 @@
 <template>
   <div style="min-height: 100vh; background: var(--bg); padding-bottom: 100px;">
-    <NavBar />
 
     <div class="page-pad" style="max-width: 640px;">
       <div class="row" style="align-items: center; gap: 12px; margin-bottom: 8px;">
@@ -172,7 +171,6 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import NavBar from '@/components/common/NavBar.vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import { useUserStore } from '@/stores/user'
