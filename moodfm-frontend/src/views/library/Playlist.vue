@@ -4,6 +4,8 @@ import { useRouter, useRoute } from 'vue-router'
 import { usePlayerStore } from '@/stores/player'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import { playlistApi } from '@/api/playlist'
+import { songApi } from '@/api/song'
+import type { Song, Platform } from '@/types'
 
 const router = useRouter()
 const route = useRoute()
@@ -12,7 +14,17 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const playlist = ref<any>(null)
 
-interface TrackItem { t: string; a: string; al: string; m: string; mood: string; liked: boolean }
+interface TrackItem {
+  id: string
+  platformSongId: string
+  t: string
+  a: string
+  al: string
+  durationSecs: number
+  m: string
+  mood: string
+  liked: boolean
+}
 
 const tracks = ref<TrackItem[]>([])
 
@@ -40,9 +52,12 @@ onMounted(async () => {
     const data = await playlistApi.getPlaylist(id)
     playlist.value = data
     tracks.value = (data.tracks ?? []).map(s => ({
+      id: String(s.id),
+      platformSongId: s.platformSongId ?? '',
       t: s.title,
       a: s.artist,
       al: s.album ?? '',
+      durationSecs: s.duration,
       m: formatDuration(s.duration),
       mood: 'CALM',
       liked: false,
@@ -54,6 +69,63 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+async function playSong(it: TrackItem) {
+  try {
+    const resp = await songApi.getAudioUrl(it.id)
+    if (!resp?.url) {
+      alert('该歌曲暂无可用播放地址')
+      return
+    }
+    const song: Song = {
+      id: it.id,
+      title: it.t,
+      artist: it.a,
+      album: it.al || undefined,
+      platform: (playlist.value?.platform ?? 'netease') as Platform,
+      platformSongId: it.platformSongId,
+      duration: it.durationSecs,
+      coverUrl: playlist.value?.coverUrl,
+      audioUrl: resp.url,
+    }
+    player.setSong(song)
+    player.setPlaying(true)
+    router.push('/player')
+  } catch {
+    alert('获取播放地址失败，请稍后重试')
+  }
+}
+
+async function playAll() {
+  if (tracks.value.length === 0) return
+  const ids = tracks.value.map(t => parseInt(t.id)).filter(n => !isNaN(n))
+  try {
+    const urlMap = await songApi.batchAudioUrls(ids)
+    const queue: Song[] = tracks.value
+      .filter(t => urlMap[t.id])
+      .map(t => ({
+        id: t.id,
+        title: t.t,
+        artist: t.a,
+        album: t.al || undefined,
+        platform: (playlist.value?.platform ?? 'netease') as Platform,
+        platformSongId: t.platformSongId,
+        duration: t.durationSecs,
+        coverUrl: playlist.value?.coverUrl,
+        audioUrl: urlMap[t.id],
+      }))
+    if (queue.length === 0) {
+      alert('该歌单暂无可播放的歌曲')
+      return
+    }
+    player.setSong(queue[0])
+    player.setQueue(queue.slice(1))
+    player.setPlaying(true)
+    router.push('/player')
+  } catch {
+    alert('获取播放列表失败，请稍后重试')
+  }
+}
 </script>
 
 <template>
@@ -91,7 +163,7 @@ onMounted(async () => {
             </div>
           </div>
           <div class="row" style="margin-top:24px;gap:10px;flex-wrap:wrap;">
-            <button class="btn" style="height:48px;padding:0 22px;" @click="player.setPlaying(true);router.push('/player')">▶ 播放 · PLAY ALL</button>
+            <button class="btn" style="height:48px;padding:0 22px;" @click="playAll()">▶ 播放 · PLAY ALL</button>
             <button class="btn-pill" style="height:48px;">♡ 收藏</button>
             <button class="btn-pill" style="height:48px;">↓ 下载</button>
             <button class="btn-pill" style="height:48px;">↗ 分享</button>
@@ -129,7 +201,7 @@ onMounted(async () => {
         }"
         @mouseenter="hovIdx = i"
         @mouseleave="hovIdx = -1"
-        @click="activeIdx = i; player.setPlaying(true)"
+        @click="activeIdx = i; playSong(t)"
       >
         <div style="width:32px;font-family:var(--mono);font-size:13px;color:var(--ink-3);">
           {{ i === activeIdx ? '▸' : String(i + 1).padStart(2, '0') }}
