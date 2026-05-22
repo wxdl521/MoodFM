@@ -1,6 +1,7 @@
 package com.moodfm.controller;
 
 import com.moodfm.common.result.R;
+import com.moodfm.common.util.SecurityUtil;
 import com.moodfm.domain.dto.user.ChangePasswordRequest;
 import com.moodfm.domain.dto.user.PreferencesRequest;
 import com.moodfm.domain.dto.user.UpdateProfileRequest;
@@ -29,30 +30,26 @@ public class UserController {
 
     private final UserService userService;
 
-    private Long uid(UserDetails ud) {
-        return Long.parseLong(ud.getUsername());
-    }
-
     // ── 兼容 auth.js 的 GET /user/me ──────────────────────────────────
     @Operation(summary = "获取当前用户信息")
     @GetMapping("/me")
     public R<UserVO> me(@AuthenticationPrincipal UserDetails ud) {
-        return R.ok(userService.getCurrentUser(uid(ud)));
+        return R.ok(userService.getCurrentUser(SecurityUtil.getUserId(ud)));
     }
 
     // ── Profile ───────────────────────────────────────────────────────
     @Operation(summary = "获取个人资料（同 /me）")
     @GetMapping("/profile")
     public R<UserVO> getProfile(@AuthenticationPrincipal UserDetails ud) {
-        return R.ok(userService.getCurrentUser(uid(ud)));
+        return me(ud);
     }
 
     @Operation(summary = "更新个人资料")
     @PutMapping("/profile")
     public R<UserVO> updateProfile(@RequestBody UpdateProfileRequest request,
                                    @AuthenticationPrincipal UserDetails ud) {
-        userService.updateProfile(uid(ud), request);
-        return R.ok(userService.getCurrentUser(uid(ud)));
+        userService.updateProfile(SecurityUtil.getUserId(ud), request);
+        return R.ok(userService.getCurrentUser(SecurityUtil.getUserId(ud)));
     }
 
     // ── Password ──────────────────────────────────────────────────────
@@ -60,7 +57,7 @@ public class UserController {
     @PostMapping("/password")
     public R<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request,
                                   @AuthenticationPrincipal UserDetails ud) {
-        userService.changePassword(uid(ud), request);
+        userService.changePassword(SecurityUtil.getUserId(ud), request);
         return R.ok();
     }
 
@@ -69,7 +66,7 @@ public class UserController {
     @PostMapping("/avatar")
     public R<Map<String, String>> uploadAvatar(@RequestParam("file") MultipartFile file,
                                                @AuthenticationPrincipal UserDetails ud) {
-        String url = userService.uploadAvatar(uid(ud), file);
+        String url = userService.uploadAvatar(SecurityUtil.getUserId(ud), file);
         return R.ok(Map.of("avatarUrl", url));
     }
 
@@ -77,14 +74,14 @@ public class UserController {
     @Operation(summary = "获取偏好设置")
     @GetMapping("/preferences")
     public R<PreferencesVO> getPreferences(@AuthenticationPrincipal UserDetails ud) {
-        return R.ok(userService.getPreferences(uid(ud)));
+        return R.ok(userService.getPreferences(SecurityUtil.getUserId(ud)));
     }
 
     @Operation(summary = "保存偏好设置（流派 / 语言）")
     @PutMapping("/preferences")
     public R<Void> savePreferences(@RequestBody PreferencesRequest request,
                                    @AuthenticationPrincipal UserDetails ud) {
-        userService.savePreferences(uid(ud), request);
+        userService.savePreferences(SecurityUtil.getUserId(ud), request);
         return R.ok();
     }
 
@@ -93,7 +90,7 @@ public class UserController {
     @GetMapping("/notifications/settings")
     public R<com.moodfm.domain.vo.NotificationPrefsVO> getNotificationPrefs(
             @AuthenticationPrincipal UserDetails ud) {
-        return R.ok(userService.getNotificationPrefs(uid(ud)));
+        return R.ok(userService.getNotificationPrefs(SecurityUtil.getUserId(ud)));
     }
 
     @Operation(summary = "保存通知偏好设置")
@@ -101,7 +98,7 @@ public class UserController {
     public R<Void> saveNotificationPrefs(
             @RequestBody com.moodfm.domain.vo.NotificationPrefsVO prefs,
             @AuthenticationPrincipal UserDetails ud) {
-        userService.saveNotificationPrefs(uid(ud), prefs);
+        userService.saveNotificationPrefs(SecurityUtil.getUserId(ud), prefs);
         return R.ok();
     }
 
@@ -109,14 +106,14 @@ public class UserController {
     @Operation(summary = "获取登录设备列表")
     @GetMapping("/devices")
     public R<List<Map<String, Object>>> getDevices(@AuthenticationPrincipal UserDetails ud) {
-        return R.ok(userService.getDevices(Long.parseLong(ud.getUsername())));
+        return R.ok(userService.getDevices(SecurityUtil.getUserId(ud)));
     }
 
     @Operation(summary = "吊销指定设备")
     @DeleteMapping("/devices/{id}")
     public R<Void> revokeDevice(@PathVariable String id,
                                 @AuthenticationPrincipal UserDetails ud) {
-        userService.revokeDevice(Long.parseLong(ud.getUsername()), id);
+        userService.revokeDevice(SecurityUtil.getUserId(ud), id);
         return R.ok();
     }
 
@@ -124,14 +121,14 @@ public class UserController {
     @Operation(summary = "注销账号")
     @DeleteMapping("/account")
     public R<Void> deleteAccount(@AuthenticationPrincipal UserDetails ud) {
-        userService.deleteAccount(uid(ud));
+        userService.deleteAccount(SecurityUtil.getUserId(ud));
         return R.ok();
     }
 
     @Operation(summary = "清除所有个人数据（保留账号）")
     @DeleteMapping("/data/all")
     public R<Void> deleteAllData(@AuthenticationPrincipal UserDetails ud) {
-        userService.deleteAllData(uid(ud));
+        userService.deleteAllData(SecurityUtil.getUserId(ud));
         return R.ok();
     }
 }

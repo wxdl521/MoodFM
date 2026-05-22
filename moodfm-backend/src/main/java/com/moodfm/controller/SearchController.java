@@ -2,6 +2,7 @@ package com.moodfm.controller;
 
 import com.moodfm.common.result.R;
 import com.moodfm.common.result.ResultCode;
+import com.moodfm.common.util.SecurityUtil;
 import com.moodfm.domain.vo.SearchResultVO;
 import com.moodfm.service.search.SearchService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -26,10 +27,6 @@ public class SearchController {
 
     private final SearchService searchService;
 
-    private Long uid(UserDetails ud) {
-        return Long.parseLong(ud.getUsername());
-    }
-
     @Operation(summary = "搜索歌曲",
                description = "mode=keyword 精确关键词搜索（转发至绑定平台）；mode=mood 心情语义搜索（向量检索）")
     @GetMapping
@@ -44,6 +41,6 @@ public class SearchController {
         if (!"keyword".equals(mode) && !"mood".equals(mode)) {
             return R.fail(ResultCode.BAD_REQUEST, "mode 仅支持 keyword / mood");
         }
-        return R.ok(searchService.search(uid(ud), q.trim(), mode, Math.min(limit, 50)));
+        return R.ok(searchService.search(SecurityUtil.getUserId(ud), q.trim(), mode, Math.min(limit, 50)));
     }
 }

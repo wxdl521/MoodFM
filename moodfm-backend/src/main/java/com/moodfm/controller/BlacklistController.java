@@ -3,6 +3,7 @@ package com.moodfm.controller;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.moodfm.common.result.R;
+import com.moodfm.common.util.SecurityUtil;
 import com.moodfm.domain.entity.UserProfile;
 import com.moodfm.mapper.UserProfileMapper;
 import io.swagger.v3.oas.annotations.Operation;
@@ -28,16 +29,12 @@ public class BlacklistController {
     private final UserProfileMapper userProfileMapper;
     private final ObjectMapper objectMapper;
 
-    private Long uid(UserDetails ud) {
-        return Long.parseLong(ud.getUsername());
-    }
-
     // ── GET — returns all blacklist entries ──────────────────────────────
 
     @Operation(summary = "获取黑名单列表")
     @GetMapping
     public R<List<Map<String, Object>>> getAll(@AuthenticationPrincipal UserDetails ud) {
-        UserProfile profile = userProfileMapper.selectByUserId(uid(ud));
+        UserProfile profile = userProfileMapper.selectByUserId(SecurityUtil.getUserId(ud));
         if (profile == null) return R.ok(Collections.emptyList());
 
         List<Map<String, Object>> result = new ArrayList<>();
@@ -63,7 +60,7 @@ public class BlacklistController {
     @PostMapping
     public R<Map<String, Object>> add(@RequestBody AddBlacklistRequest request,
                                       @AuthenticationPrincipal UserDetails ud) {
-        Long userId = uid(ud);
+        Long userId = SecurityUtil.getUserId(ud);
         String type = request.getType();
         String value = request.getValue();
         if (type == null || value == null) return R.fail(400, "type and value are required");
@@ -95,7 +92,7 @@ public class BlacklistController {
     @DeleteMapping("/{id}")
     public R<Void> remove(@PathVariable String id,
                           @AuthenticationPrincipal UserDetails ud) {
-        Long userId = uid(ud);
+        Long userId = SecurityUtil.getUserId(ud);
         int colonIdx = id.indexOf(':');
         if (colonIdx <= 0) return R.fail(400, "invalid id format");
 

@@ -1,6 +1,7 @@
 package com.moodfm.controller;
 
 import com.moodfm.common.result.R;
+import com.moodfm.common.util.SecurityUtil;
 import com.moodfm.domain.vo.HistoryPageVO;
 import com.moodfm.service.history.HistoryService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -23,7 +24,7 @@ public class HistoryController {
     @Operation(summary = "清除全部播放历史")
     @DeleteMapping("/all")
     public R<Void> clearHistory(@AuthenticationPrincipal UserDetails ud) {
-        historyService.clearAll(Long.parseLong(ud.getUsername()));
+        historyService.clearAll(SecurityUtil.getUserId(ud));
         return R.ok();
     }
 
@@ -35,7 +36,7 @@ public class HistoryController {
             @RequestParam(defaultValue = "20") int pageSize,
             @AuthenticationPrincipal UserDetails ud) {
 
-        long userId = Long.parseLong(ud.getUsername());
+        long userId = SecurityUtil.getUserId(ud);
         return R.ok(historyService.getHistory(userId, scene, page, pageSize));
     }
 }

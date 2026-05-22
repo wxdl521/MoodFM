@@ -1,15 +1,15 @@
 package com.moodfm.controller;
 
 import com.moodfm.common.result.R;
-import com.moodfm.common.result.ResultCode;
+import com.moodfm.common.util.SecurityUtil;
 import com.moodfm.domain.dto.feedback.PlaybackFeedbackDto;
 import com.moodfm.domain.dto.radio.BatchFeedbackRequest;
 import com.moodfm.domain.dto.radio.MoodInputRequest;
 import com.moodfm.domain.dto.radio.SessionDurationRequest;
+import com.moodfm.domain.dto.radio.StartFromSongRequest;
 import com.moodfm.domain.vo.RadioQueueVO;
 import com.moodfm.domain.vo.SessionSummaryVO;
 import com.moodfm.domain.vo.SongVO;
-import com.moodfm.mapper.MoodSessionMapper;
 import com.moodfm.service.feedback.FeedbackService;
 import com.moodfm.service.player.PlayerService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -21,7 +21,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -34,11 +33,6 @@ public class RadioController {
 
     private final PlayerService playerService;
     private final FeedbackService feedbackService;
-    private final MoodSessionMapper moodSessionMapper;
-
-    private Long uid(UserDetails ud) {
-        return Long.parseLong(ud.getUsername());
-    }
 
     // ── 核心播放接口 ──────────────────────────────────────────────────
 
@@ -46,7 +40,7 @@ public class RadioController {
     @PostMapping("/start")
     public R<RadioQueueVO> startRadio(@Valid @RequestBody MoodInputRequest request,
                                       @AuthenticationPrincipal UserDetails ud) {
-        return R.ok(playerService.startRadio(uid(ud), request));
+        return R.ok(playerService.startRadio(SecurityUtil.getUserId(ud), request));
     }
 
     @Operation(summary = "获取下一批歌曲")
@@ -57,7 +51,7 @@ public class RadioController {
         if (playerService.isSessionExpired(sessionId)) {
             return R.fail(410, "电台会话已结束，请重新开始");
         }
-        return R.ok(playerService.getNextBatch(uid(ud), sessionId));
+        return R.ok(playerService.getNextBatch(SecurityUtil.getUserId(ud), sessionId));
     }
 
     @Operation(summary = "获取歌曲播放地址")
@@ -65,7 +59,7 @@ public class RadioController {
     public R<String> getSongUrl(@RequestParam String platform,
                                 @RequestParam String songId,
                                 @AuthenticationPrincipal UserDetails ud) {
-        return R.ok(playerService.getSongUrl(uid(ud), platform, songId));
+        return R.ok(playerService.getSongUrl(SecurityUtil.getUserId(ud), platform, songId));
     }
 
     @Operation(summary = "修改当前会话时长")
@@ -78,13 +72,10 @@ public class RadioController {
 
     @Operation(summary = "基于歌曲启动电台")
     @PostMapping("/start-from-song")
-    public R<RadioQueueVO> startFromSong(@RequestBody Map<String, Long> body,
-                                         @AuthenticationPrincipal UserDetails ud) {
-        Long songId = body.get("songId");
-        if (songId == null) {
-            return R.fail(ResultCode.BAD_REQUEST, "songId 不能为空");
-        }
-        return R.ok(playerService.startRadioFromSong(uid(ud), songId));
+    public R<RadioQueueVO> startFromSong(
+            @Valid @RequestBody StartFromSongRequest request,
+            @AuthenticationPrincipal UserDetails ud) {
+        return R.ok(playerService.startRadioFromSong(SecurityUtil.getUserId(ud), request.getSongId()));
     }
 
     // ── 反馈接口 ──────────────────────────────────────────────────────
@@ -93,7 +84,7 @@ public class RadioController {
     @PostMapping("/feedback")
     public R<Void> feedback(@Valid @RequestBody PlaybackFeedbackDto dto,
                             @AuthenticationPrincipal UserDetails ud) {
-        Long userId = uid(ud);
+        Long userId = SecurityUtil.getUserId(ud);
         feedbackService.record(userId, dto);
         // Feature 1: 反馈后检查是否需要动态重排
         if (dto.getSessionId() != null && ("completed".equals(dto.getEventType()) || "skip".equals(dto.getEventType()))) {
@@ -106,7 +97,7 @@ public class RadioController {
     @PostMapping("/feedback/batch")
     public R<Void> batchFeedback(@Valid @RequestBody BatchFeedbackRequest request,
                                  @AuthenticationPrincipal UserDetails ud) {
-        Long userId = uid(ud);
+        Long userId = SecurityUtil.getUserId(ud);
         Long lastSessionId = null;
         boolean hasPlaybackEvent = false;
         for (PlaybackFeedbackDto dto : request.getEvents()) {
@@ -132,14 +123,7 @@ public class RadioController {
     public R<List<SessionSummaryVO>> getSessions(
             @RequestParam(defaultValue = "5") int limit,
             @AuthenticationPrincipal UserDetails ud) {
-        List<Map<String, Object>> rows = moodSessionMapper.selectRecentSessions(uid(ud), Math.min(limit, 20));
-        List<SessionSummaryVO> result = rows.stream().map(r -> SessionSummaryVO.builder()
-                .id(toLong(r.get("id")))
-                .rawInput((String) r.get("rawInput"))
-                .scene((String) r.get("scene"))
-                .startedAt(r.get("startedAt") instanceof LocalDateTime ldt ? ldt : null)
-                .build()).toList();
-        return R.ok(result);
+        return R.ok(playerService.getRecentSessions(SecurityUtil.getUserId(ud), limit));
     }
 
     // ── 从歌单播放 (stub) ─────────────────────────────────────────────
@@ -152,10 +136,4 @@ public class RadioController {
         return R.ok();
     }
 
-    private Long toLong(Object val) {
-        if (val == null) return null;
-        if (val instanceof Long l) return l;
-        if (val instanceof Number n) return n.longValue();
-        try { return Long.parseLong(val.toString()); } catch (Exception e) { return null; }
-    }
 }

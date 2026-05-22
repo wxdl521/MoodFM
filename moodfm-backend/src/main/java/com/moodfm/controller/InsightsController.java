@@ -1,6 +1,7 @@
 package com.moodfm.controller;
 
 import com.moodfm.common.result.R;
+import com.moodfm.common.util.SecurityUtil;
 import com.moodfm.domain.vo.*;
 import com.moodfm.service.insights.InsightsService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -34,7 +35,7 @@ public class InsightsController {
             @RequestParam int year,
             @RequestParam int month,
             @AuthenticationPrincipal UserDetails userDetails) {
-        Long userId = Long.parseLong(userDetails.getUsername());
+        Long userId = SecurityUtil.getUserId(userDetails);
         return R.ok(insightsService.getCalendar(userId, year, month));
     }
 
@@ -43,7 +44,7 @@ public class InsightsController {
     public R<DayDetailVO> getDayDetail(
             @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @AuthenticationPrincipal UserDetails userDetails) {
-        Long userId = Long.parseLong(userDetails.getUsername());
+        Long userId = SecurityUtil.getUserId(userDetails);
         return R.ok(insightsService.getDayDetail(userId, date));
     }
 
@@ -52,7 +53,7 @@ public class InsightsController {
     public R<InsightsSummaryVO> getSummary(
             @RequestParam(defaultValue = "7") @Min(1) @Max(365) int days,
             @AuthenticationPrincipal UserDetails userDetails) {
-        Long userId = Long.parseLong(userDetails.getUsername());
+        Long userId = SecurityUtil.getUserId(userDetails);
         return R.ok(insightsService.getSummary(userId, days));
     }
 
@@ -61,7 +62,7 @@ public class InsightsController {
     public R<MoodTrendVO> getMoodTrend(
             @RequestParam(defaultValue = "7") @Min(1) @Max(365) int days,
             @AuthenticationPrincipal UserDetails userDetails) {
-        Long userId = Long.parseLong(userDetails.getUsername());
+        Long userId = SecurityUtil.getUserId(userDetails);
         return R.ok(insightsService.getMoodTrend(userId, days));
     }
 
@@ -70,7 +71,7 @@ public class InsightsController {
     public R<List<GenreRadarItemVO>> getGenreRadar(
             @RequestParam(defaultValue = "7") @Min(1) @Max(365) int days,
             @AuthenticationPrincipal UserDetails userDetails) {
-        Long userId = Long.parseLong(userDetails.getUsername());
+        Long userId = SecurityUtil.getUserId(userDetails);
         return R.ok(insightsService.getGenreRadar(userId, days));
     }
 
@@ -79,7 +80,7 @@ public class InsightsController {
     public R<TopItemsVO> getTopItems(
             @RequestParam(defaultValue = "7") @Min(1) @Max(365) int days,
             @AuthenticationPrincipal UserDetails userDetails) {
-        Long userId = Long.parseLong(userDetails.getUsername());
+        Long userId = SecurityUtil.getUserId(userDetails);
         return R.ok(insightsService.getTopItems(userId, days));
     }
 }

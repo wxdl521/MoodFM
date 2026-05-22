@@ -2,6 +2,7 @@ package com.moodfm.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.moodfm.common.util.SecurityUtil;
 import com.moodfm.domain.entity.FeedbackEvent;
 import com.moodfm.domain.entity.MoodSession;
 import com.moodfm.domain.entity.PlayRecord;
@@ -45,7 +46,7 @@ public class ExportController {
             HttpServletResponse response,
             @AuthenticationPrincipal UserDetails userDetails) throws Exception {
 
-        Long userId = Long.parseLong(userDetails.getUsername());
+        Long userId = SecurityUtil.getUserId(userDetails);
         User user = userMapper.selectById(userId);
 
         int maxRecords = 100_000;
@@ -97,7 +98,7 @@ public class ExportController {
             HttpServletResponse response,
             @AuthenticationPrincipal UserDetails userDetails) throws Exception {
 
-        Long userId = Long.parseLong(userDetails.getUsername());
+        Long userId = SecurityUtil.getUserId(userDetails);
 
         int maxCsvRecords = 100_000;
         List<Map<String, Object>> history = playRecordMapper.selectHistory(userId, null, maxCsvRecords + 1, 0);
