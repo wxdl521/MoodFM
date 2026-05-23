@@ -173,6 +173,13 @@
 
     <!-- Mini player (fixed bottom) -->
     <MiniPlayer />
+
+    <!-- Error toast -->
+    <Transition name="fade">
+      <div v-if="errorToast" class="error-toast">
+        {{ errorToast }}
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -208,7 +215,16 @@ const moodInput = ref('')
 const selectedScene = ref('')
 const sessionDuration = ref(30)
 
-const scenes = ['通勤', '学习', '跑步', '写作', '睡前', '派对', '深夜', '+ 自定义']
+const scenes = ['通勤', '学习', '跑步', '写作', '睡前', '派对', '深夜']
+
+// ── Error toast ─────────────────────────────────────────────────────────────
+const errorToast = ref<string | null>(null)
+let errorToastTimer: ReturnType<typeof setTimeout> | null = null
+function showError(msg: string) {
+  errorToast.value = msg
+  if (errorToastTimer) clearTimeout(errorToastTimer)
+  errorToastTimer = setTimeout(() => { errorToast.value = null }, 4000)
+}
 
 const durationOptions = [
   { value: 15, label: '15min' },
@@ -219,7 +235,6 @@ const durationOptions = [
 ]
 
 function handleSceneSelect(scene: string) {
-  if (scene === '+ 自定义') return
   selectedScene.value = scene === selectedScene.value ? '' : scene
   radio.setScene(selectedScene.value)
 }
@@ -254,8 +269,7 @@ async function handleStartRadio() {
     await radio.startRadio({ moodText: text, scene: selectedScene.value || undefined, durationMinutes: sessionDuration.value || undefined })
     router.push('/player')
   } catch {
-    // silently fail – backend may not be running in dev
-    router.push('/player')
+    showError('调台失败 · 请检查网络或稍后重试')
   }
 }
 
@@ -264,18 +278,20 @@ async function handleRecommendPlay() {
   radio.setMoodText(text)
   try {
     await radio.startRadio({ moodText: text, durationMinutes: sessionDuration.value || undefined })
-  } catch {}
-  router.push('/player')
+    router.push('/player')
+  } catch {
+    showError('调台失败 · 请检查网络或稍后重试')
+  }
 }
 
 async function handleJustPlay() {
   radio.setMoodText('随机')
   try {
     await radio.startRadio({ moodText: '随机', durationMinutes: sessionDuration.value || undefined })
+    router.push('/player')
   } catch {
-    // dev: navigate anyway
+    showError('调台失败 · 请检查网络或稍后重试')
   }
-  router.push('/player')
 }
 
 async function resumeSession(session: RadioSession) {
@@ -289,7 +305,7 @@ async function resumeSession(session: RadioSession) {
     })
     router.push('/player')
   } catch {
-    // failed to load songs — stay on home
+    showError('继续电台失败 · 请检查网络或稍后重试')
   }
 }
 
@@ -656,4 +672,32 @@ onMounted(async () => {
 .recent-card:nth-child(2) { animation: card-rise 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.19s both; }
 .recent-card:nth-child(3) { animation: card-rise 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.26s both; }
 .recent-card:nth-child(4) { animation: card-rise 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.33s both; }
+
+/* ── Error toast ─────────────────────────────────────── */
+.error-toast {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  background: var(--ink);
+  color: var(--bg);
+  border-radius: 24px;
+  padding: 14px 22px;
+  font-family: var(--serif-cn);
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 360px;
+  width: calc(100% - 40px);
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0,0,0,.3);
+}
+
+.fade-enter-active,
+.fade-leave-active { transition: opacity 0.25s ease, transform 0.25s ease; }
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 8px);
+}
 </style>
