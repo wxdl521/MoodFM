@@ -190,15 +190,8 @@
           </div>
         </template>
         <template v-else>
-          <div
-            v-for="item in placeholderQueue"
-            :key="item.n"
-            class="queue-item"
-          >
-            <span class="mono" style="font-size: 10px; opacity: .7">{{ item.idx }}</span>
-            <span style="font-family: var(--serif-cn); font-size: 13px">{{ item.n }}</span>
-            <span style="font-size: 12px; opacity: .7">· {{ item.a }}</span>
-            <span class="mono" style="font-size: 10px; opacity: .6">{{ item.t }}</span>
+          <div class="queue-empty mono">
+            队列已空 · 当前为最后一首
           </div>
         </template>
       </div>
@@ -421,6 +414,7 @@ watch(() => player.currentSong?.id, async (songId) => {
   lyricsLines.value = []
   liked.value = false
   if (songId) {
+    if (showLyrics.value) loadLyrics()
     try {
       const res = await playlistApi.isLiked(songId)
       liked.value = res.liked
@@ -436,15 +430,6 @@ watch(activeLyricIdx, async (idx) => {
   const el = lyricsScrollEl.value.children[idx] as HTMLElement | undefined
   el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
 })
-
-// ── Queue placeholder (desktop strip) ───────────────────────────────────────
-const placeholderQueue = [
-  { idx: '04', n: 'spiegel im spiegel', a: 'Arvo Pärt',  t: '9:24' },
-  { idx: '05', n: 'an ending (ascent)',  a: 'Brian Eno',  t: '4:18' },
-  { idx: '06', n: 'avril 14th',          a: 'Aphex Twin', t: '2:05' },
-  { idx: '07', n: '横超',                a: '青葉市子',   t: '4:12' },
-  { idx: '08', n: 'cirrus',              a: 'Bonobo',     t: '5:48' },
-]
 
 // ── Playback handlers ────────────────────────────────────────────────────────
 function handlePlayPause() {
@@ -983,6 +968,14 @@ onUnmounted(() => {
 
 .queue-item:hover {
   background: rgba(255, 255, 255, 0.08);
+}
+
+.queue-empty {
+  font-size: 10px;
+  letter-spacing: .18em;
+  opacity: 0.55;
+  padding: 8px 0;
+  white-space: nowrap;
 }
 
 /* ── Lyrics overlay ───────────────────────────────────────────────── */
