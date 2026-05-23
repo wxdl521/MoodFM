@@ -225,8 +225,25 @@ function handleSceneSelect(scene: string) {
 }
 
 // ── MoodWheel callback ──────────────────────────────────────────────────────
-function onWheelChange(_x: number, _y: number) {
-  // Future: map coordinates to mood preset
+function onWheelChange(x: number, y: number) {
+  const dist = Math.hypot(x, y)
+  if (dist < 0.12) return  // near centre — don't override
+
+  let text = ''
+  const warm = x       // +1=warm/energetic  -1=cool/calm
+  const bright = -y    // +1=bright/active   -1=dark/quiet  (y is inverted: top=-1)
+
+  if (bright > 0.35 && warm > 0.35)       text = '精力充沛，想听节奏感强又温热的音乐'
+  else if (bright > 0.35 && warm < -0.35) text = '心情明亮，想要一些清爽有活力的旋律'
+  else if (bright < -0.35 && warm > 0.35) text = '有些疲惫，想沉浸在温柔的慢旋律里'
+  else if (bright < -0.35 && warm < -0.35) text = '需要专注，想要清冷纯粹的背景音'
+  else if (bright > 0.4)                   text = '状态不错，想要节奏感强一点的音乐'
+  else if (bright < -0.4)                  text = '有些慵懒，想要轻柔安静的陪伴'
+  else if (warm > 0.4)                     text = '心里有些温热，想要有情绪的旋律'
+  else if (warm < -0.4)                    text = '心境清淡，想要简单不复杂的音乐'
+  else                                     text = '心情平平，随便来点什么吧'
+
+  moodInput.value = text
 }
 
 // ── Radio actions ───────────────────────────────────────────────────────────
