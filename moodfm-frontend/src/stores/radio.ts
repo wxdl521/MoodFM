@@ -11,7 +11,7 @@ export const useRadioStore = defineStore('radio', () => {
   const isLoading = ref(false)
   const recentSessions = ref<RadioSession[]>([])
 
-  async function startRadio(data: { moodText: string; scene?: string; durationMinutes?: number }) {
+  async function startRadio(data: { moodText: string; scene?: string; durationMinutes?: number | null }) {
     isLoading.value = true
     try {
       const res = await radioApi.startRadio(data)

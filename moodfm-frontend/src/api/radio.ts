@@ -7,7 +7,7 @@ interface RadioQueueVO { sessionId: number; scene?: string; moodSummary?: string
 
 interface Feedback { songId: string; sessionId: string; eventType: string; playedSeconds?: number; totalSeconds?: number; platform?: string }
 
-interface StartRadioData { moodText: string; scene?: string; platform?: 'netease' | 'qqmusic'; durationMinutes?: number }
+interface StartRadioData { moodText: string; scene?: string; platform?: 'netease' | 'qqmusic'; durationMinutes?: number | null }
 
 export const radioApi = {
   startRadio:      (data: StartRadioData): Promise<RadioQueueVO>          => api.post('/radio/start', data),

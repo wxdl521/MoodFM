@@ -20,7 +20,7 @@ public class MoodInputRequest {
     @Min(0) @Max(1)
     private Double energy;
 
-    /** 电台时长（分钟），默认 30 */
+    /** 电台时长（分钟），默认 30；显式传 null 表示"无限"（不设置 TTL） */
     @Min(10) @Max(120)
     private Integer durationMinutes = 30;
 }

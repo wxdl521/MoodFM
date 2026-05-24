@@ -266,7 +266,7 @@ async function handleStartRadio() {
   const text = moodInput.value.trim() || selectedScene.value || '随机'
   radio.setMoodText(text)
   try {
-    await radio.startRadio({ moodText: text, scene: selectedScene.value || undefined, durationMinutes: sessionDuration.value || undefined })
+    await radio.startRadio({ moodText: text, scene: selectedScene.value || undefined, durationMinutes: sessionDuration.value === 0 ? null : sessionDuration.value })
     router.push('/player')
   } catch {
     showError('调台失败 · 请检查网络或稍后重试')
@@ -277,7 +277,7 @@ async function handleRecommendPlay() {
   const text = recommendTitle.value
   radio.setMoodText(text)
   try {
-    await radio.startRadio({ moodText: text, durationMinutes: sessionDuration.value || undefined })
+    await radio.startRadio({ moodText: text, durationMinutes: sessionDuration.value === 0 ? null : sessionDuration.value })
     router.push('/player')
   } catch {
     showError('调台失败 · 请检查网络或稍后重试')
@@ -287,7 +287,7 @@ async function handleRecommendPlay() {
 async function handleJustPlay() {
   radio.setMoodText('随机')
   try {
-    await radio.startRadio({ moodText: '随机', durationMinutes: sessionDuration.value || undefined })
+    await radio.startRadio({ moodText: '随机', durationMinutes: sessionDuration.value === 0 ? null : sessionDuration.value })
     router.push('/player')
   } catch {
     showError('调台失败 · 请检查网络或稍后重试')
@@ -301,7 +301,7 @@ async function resumeSession(session: RadioSession) {
     await radio.startRadio({
       moodText: session.moodText || '随机',
       scene: session.scene || undefined,
-      durationMinutes: sessionDuration.value || undefined,
+      durationMinutes: sessionDuration.value === 0 ? null : sessionDuration.value,
     })
     router.push('/player')
   } catch {

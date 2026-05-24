@@ -105,10 +105,17 @@ public class PlayerServiceImpl implements PlayerService {
         session.setDurationMinutes(request.getDurationMinutes());
         sessionMapper.insert(session);
 
-        // 2.5 存储会话时长 TTL（默认 30 分钟）
-        int durationMinutes = request.getDurationMinutes() != null ? request.getDurationMinutes() : 30;
+        // 2.5 存储会话时长 TTL
+        // durationMinutes == null  → "无限"，不设置过期时间（保留 marker 让 isSessionExpired 返回 false）
+        // durationMinutes != null  → 设置对应秒数的 TTL
         String ttlKey = RedisKeys.format(RedisKeys.SESSION_TTL, session.getId());
-        redisTemplate.opsForValue().set(ttlKey, String.valueOf(durationMinutes * 60), Duration.ofSeconds(durationMinutes * 60L));
+        Integer durationMinutes = request.getDurationMinutes();
+        if (durationMinutes == null) {
+            // 无限时长：写入 marker，不设置 TTL
+            redisTemplate.opsForValue().set(ttlKey, "infinite");
+        } else {
+            redisTemplate.opsForValue().set(ttlKey, String.valueOf(durationMinutes * 60), Duration.ofSeconds(durationMinutes * 60L));
+        }
 
         // 3. 获取默认绑定平台 + cookie
         PlatformBinding binding = platformBindingService.getDefaultBinding(userId);
