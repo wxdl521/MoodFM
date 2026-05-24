@@ -244,6 +244,21 @@
       </div>
     </Transition>
 
+    <!-- ── Info Toast (skip / share fallback) ────────────────────────── -->
+    <Transition name="fade">
+      <div
+        v-if="infoToast"
+        style="position:fixed;bottom:100px;left:50%;transform:translateX(-50%);z-index:60;
+               background:var(--ink);color:var(--bg);border-radius:24px;
+               padding:14px 20px;display:flex;align-items:center;gap:14px;
+               max-width:360px;width:calc(100% - 40px);box-shadow:0 8px 32px rgba(0,0,0,.3);"
+      >
+        <div style="flex:1;font-family:var(--serif-cn);font-size:14px;line-height:1.5;">
+          {{ infoToast }}
+        </div>
+      </div>
+    </Transition>
+
     <!-- Lyrics overlay -->
     <Transition name="fade">
       <div v-if="showLyrics" class="lyrics-overlay" @click="showLyrics = false">
@@ -302,16 +317,21 @@ const ws     = useWebSocket()
 const liked             = ref(false)
 const showLyrics        = ref(false)
 const blacklistToast    = ref<string | null>(null)
+const infoToast         = ref<string | null>(null)
 const lastSkippedArtist = ref<string | null>(null)
 const consecutiveSkips  = ref(0)
+let infoToastTimer: ReturnType<typeof setTimeout> | null = null
+
+function showInfoToast(msg: string, durationMs = 2500) {
+  infoToast.value = msg
+  if (infoToastTimer) clearTimeout(infoToastTimer)
+  infoToastTimer = setTimeout(() => { infoToast.value = null }, durationMs)
+}
 
 // ── Lyrics state ─────────────────────────────────────────────────────────────
 const lyricsLines    = ref<LyricLine[]>([])
 const lyricsLoading  = ref(false)
 const lyricsScrollEl = ref<HTMLElement | null>(null)
-
-// Progress simulation when no real audio
-let simTimer: ReturnType<typeof setInterval> | null = null
 
 // ── Volume feedback tracking (Feature: volume_up implicit feedback) ──
 let lastVolumeSentTs = 0
@@ -458,11 +478,22 @@ function _advanceQueue() {
   if (song?.audioUrl) {
     audio.load(song.audioUrl)
       .then(() => audio.play())
-      .catch(() => { if (player.queue.length > 0) _advanceQueue() })
+      .catch(() => {
+        const failedTitle = song?.title
+        if (failedTitle) showInfoToast(`「${failedTitle}」无法播放，已跳过`)
+        else showInfoToast('该歌曲无法播放，已跳过')
+        if (player.queue.length > 0) _advanceQueue()
+        else { audio.stop(); player.setPlaying(false) }
+      })
   } else if (player.queue.length > 0) {
     // No audio URL — skip to next song instead of showing fake progress
+    const skippedTitle = song?.title
+    if (skippedTitle) showInfoToast(`「${skippedTitle}」无法播放，已跳过`)
+    else showInfoToast('该歌曲无法播放，已跳过')
     _advanceQueue()
   } else {
+    // No audio URL and queue empty — stop, no fake progress
+    if (song) showInfoToast('该歌曲无法播放，队列已空')
     audio.stop()
     player.setPlaying(false)
   }
@@ -553,12 +584,44 @@ function handleSwitchSource() {
   // TODO: integrate platform switching
 }
 
-function handleShare() {
-  if (navigator.share && player.currentSong) {
-    navigator.share({
-      title: `MoodFM: ${player.currentSong.title}`,
-      text: `正在收听 ${player.currentSong.artist} - ${player.currentSong.title}`,
-    }).catch(() => undefined)
+async function handleShare() {
+  const song = player.currentSong
+  if (!song) return
+  const title = `MoodFM: ${song.title}`
+  const text = `正在收听 ${song.artist} - ${song.title}`
+  const shareUrl = typeof window !== 'undefined' ? window.location.href : ''
+
+  // Prefer native Web Share API when available
+  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+    try {
+      await navigator.share({ title, text, url: shareUrl })
+      return
+    } catch (err: unknown) {
+      // User-cancelled (AbortError) — do nothing, no fallback needed
+      if (err instanceof Error && err.name === 'AbortError') return
+      // Other share error — fall through to clipboard fallback
+    }
+  }
+
+  // Fallback: copy link to clipboard
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(shareUrl)
+      showInfoToast('链接已复制')
+    } else {
+      // Legacy fallback: temporary textarea + execCommand
+      const ta = document.createElement('textarea')
+      ta.value = shareUrl
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      document.body.removeChild(ta)
+      showInfoToast(ok ? '链接已复制' : '复制失败，请手动复制')
+    }
+  } catch {
+    showInfoToast('复制失败，请手动复制')
   }
 }
 
@@ -573,29 +636,6 @@ function handleProgressClick(e: MouseEvent) {
     player.setProgress(ratio)
   }
 }
-
-// ── Simulated progress (no real audio) ──────────────────────────────────────
-function startSimProgress() {
-  stopSimProgress()
-  if (!player.currentSong?.audioUrl && player.isPlaying) {
-    simTimer = setInterval(() => {
-      const next = (player.progress + 0.001) % 1
-      player.setProgress(next)
-    }, 200)
-  }
-}
-
-function stopSimProgress() {
-  if (simTimer !== null) {
-    clearInterval(simTimer)
-    simTimer = null
-  }
-}
-
-watch(() => player.isPlaying, (val) => {
-  if (val && !player.currentSong?.audioUrl) startSimProgress()
-  else stopSimProgress()
-})
 
 // ── Navigation ───────────────────────────────────────────────────────────────
 function goBack() {
@@ -625,11 +665,17 @@ onMounted(() => {
         .then(() => audio.play())
         .catch(() => {
           // URL failed (CORS / expired / no VIP) — skip to next song
+          const failedTitle = player.currentSong?.title
           if (player.queue.length > 0) {
+            if (failedTitle) showInfoToast(`「${failedTitle}」无法播放，已跳过`)
+            else showInfoToast('该歌曲无法播放，已跳过')
             handleNext()
           } else {
-            player.setPlaying(true)
-            startSimProgress()
+            // Queue empty — stop instead of showing fake progress
+            if (failedTitle) showInfoToast(`「${failedTitle}」无法播放`)
+            else showInfoToast('该歌曲无法播放')
+            audio.stop()
+            player.setPlaying(false)
           }
         })
     }
@@ -644,7 +690,10 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  stopSimProgress()
+  if (infoToastTimer) {
+    clearTimeout(infoToastTimer)
+    infoToastTimer = null
+  }
 })
 </script>
 
@@ -928,14 +977,6 @@ onUnmounted(() => {
 
 .chip-btn--active {
   background: rgba(255, 255, 255, 0.12);
-}
-
-.chip-btn--share {
-  display: none;
-}
-
-@media (min-width: 900px) {
-  .chip-btn--share { display: inline-flex; }
 }
 
 /* ── Queue strip ──────────────────────────────────────────────────── */
