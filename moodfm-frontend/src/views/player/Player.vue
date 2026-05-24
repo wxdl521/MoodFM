@@ -350,6 +350,9 @@ function showInfoToast(msg: string, durationMs = 2500) {
 const lyricsLines    = ref<LyricLine[]>([])
 const lyricsLoading  = ref(false)
 const lyricsScrollEl = ref<HTMLElement | null>(null)
+// Tracks the songId currently loaded/loading in lyricsLines. Used for dedup
+// so切歌 watcher 不会对同一首歌重复发请求，且能丢弃过期 fetch 结果。
+const lyricsLoadedSongId = ref<string | number | null>(null)
 
 // ── Volume feedback tracking (Feature: volume_up implicit feedback) ──
 let lastVolumeSentTs = 0
@@ -444,28 +447,44 @@ const activeLyricIdx = computed(() => {
 async function loadLyrics() {
   const song = player.currentSong
   if (!song?.id) return
+  // Dedup: 同一首歌已加载/正在加载就跳过，避免切歌 watcher 与「打开面板」兜底重复请求
+  if (lyricsLoadedSongId.value === song.id) return
+  const targetId = song.id
+  lyricsLoadedSongId.value = targetId
   lyricsLoading.value = true
   try {
-    const lines = await songApi.lyrics(song.id)
+    const lines = await songApi.lyrics(targetId)
+    // Stale guard: 请求返回时用户可能已切到下一首，避免覆盖新歌词
+    if (lyricsLoadedSongId.value !== targetId) return
     lyricsLines.value = Array.isArray(lines) ? lines.filter(l => l.text?.trim()) : []
   } catch (err) {
-    // silent: 歌词获取失败时显示「暂无歌词」就够了，不弹 toast
-    logger.warn('player:lyrics-load', err)
-    lyricsLines.value = []
+    // silent: 预取/加载失败时面板显示「暂无歌词」就够了，不弹 toast
+    logger.warn('player:lyrics-prefetch', err)
+    if (lyricsLoadedSongId.value === targetId) {
+      lyricsLines.value = []
+      // 失败时把状态回退，方便用户手动打开面板时仍可触发重试 fallback
+      lyricsLoadedSongId.value = null
+    }
   } finally {
-    lyricsLoading.value = false
+    if (lyricsLoadedSongId.value === targetId || lyricsLoadedSongId.value === null) {
+      lyricsLoading.value = false
+    }
   }
 }
 
+// Fallback: 罕见 race（预取失败/被丢弃，用户已点开面板）— 重新尝试一次
 watch(showLyrics, (open) => {
-  if (open && !lyricsLines.value.length) loadLyrics()
+  if (open && !lyricsLines.value.length && !lyricsLoading.value) loadLyrics()
 })
 
 watch(() => player.currentSong?.id, async (songId) => {
+  // 切歌：清空旧歌词、重置 dedup token，然后总是预取（不再判断 showLyrics）
   lyricsLines.value = []
+  lyricsLoadedSongId.value = null
   liked.value = false
   if (songId) {
-    if (showLyrics.value) loadLyrics()
+    // 总是预取：歌词只有几 KB，切歌即开始 fetch，打开面板时瞬时显示
+    loadLyrics()
     try {
       const res = await playlistApi.isLiked(songId)
       liked.value = res.liked
