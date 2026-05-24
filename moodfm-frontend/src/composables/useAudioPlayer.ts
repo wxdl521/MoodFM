@@ -1,10 +1,23 @@
+/**
+ * Audio player composable — module-level singleton.
+ *
+ * The Howl instance, refs (isReady/isPlaying/currentTime/duration/loadedUrl)
+ * and progress timer all live at module scope, so every caller of
+ * useAudioPlayer() observes the same playback state. This is what lets
+ * Player.vue and MiniPlayer.vue stay perfectly in sync when the user
+ * navigates between them.
+ *
+ * Caveat: do NOT call audioPlayer.stop() (or unload the Howl) from a
+ * component's onUnmounted. Leaving the Player page would silently kill
+ * audio for the MiniPlayer that takes over. Stop only when the user
+ * actually asks to stop, or when the queue is exhausted.
+ */
 import { ref } from 'vue'
 import { Howl } from 'howler'
 import { usePlayerStore } from '@/stores/player'
 import api from '@/api/client'
 import { logger } from '@/utils/logger'
 
-// Module-level singleton — shared across Player.vue and MiniPlayer.vue
 const isReady = ref(false)
 const isPlaying = ref(false)
 const currentTime = ref(0)
@@ -161,6 +174,11 @@ function setVolume(v: number) {
   }
 }
 
+/**
+ * Returns the shared audio-player handle. Calling this from multiple
+ * components is fine — they all observe the same singleton state.
+ * See the module-level docstring for the onUnmounted caveat.
+ */
 export function useAudioPlayer() {
   return {
     isReady,
