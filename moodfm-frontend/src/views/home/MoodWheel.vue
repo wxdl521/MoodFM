@@ -36,11 +36,18 @@
     <div v-if="moodLabel" class="wheel-label">
       <span class="mono" style="font-size:10px;letter-spacing:.14em;text-transform:uppercase">{{ moodLabel }}</span>
     </div>
+
+    <!-- First-visit discoverability hint (decorative, non-focusable) -->
+    <Transition name="hint-fade">
+      <div v-if="showHint" class="wheel-hint" aria-hidden="true">
+        拖动选择此刻心情
+      </div>
+    </Transition>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 const props = withDefaults(defineProps<{
   size?: number
@@ -121,6 +128,73 @@ const moodLabel = computed(() => {
 })
 
 
+// ── First-visit discoverability hint ───────────────────────────────────────
+// Runs a one-off demo: dot orbits the centre once while a tooltip fades in.
+// `isHinting` suppresses the `change` emit so parent state isn't disturbed.
+const HINT_KEY = 'moodwheel_hinted'
+const showHint = ref(false)
+let isHinting = false
+let hintRaf = 0
+let hintHideTimer: ReturnType<typeof setTimeout> | null = null
+let hintEndTimer: ReturnType<typeof setTimeout> | null = null
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+function runHintDemo() {
+  isHinting = true
+  showHint.value = true
+
+  if (prefersReducedMotion()) {
+    // Static tooltip only — no orbit animation
+    hintHideTimer = setTimeout(() => {
+      showHint.value = false
+      isHinting = false
+    }, 2000)
+    return
+  }
+
+  const start = performance.now()
+  const duration = 600 // ms for one full orbit
+  const radius = 0.3
+
+  const step = (now: number) => {
+    const p = Math.min(1, (now - start) / duration)
+    // Parametric circle starting at top (cos -> x, sin -> y, offset -π/2)
+    const angle = 2 * Math.PI * p - Math.PI / 2
+    dotNX.value = Math.cos(angle) * radius
+    dotNY.value = Math.sin(angle) * radius
+    if (p < 1) {
+      hintRaf = requestAnimationFrame(step)
+    } else {
+      // Reset to centre for a calm post-demo state
+      dotNX.value = INITIAL_NX
+      dotNY.value = INITIAL_NY
+      // Keep tooltip visible for ~2s after orbit completes
+      hintHideTimer = setTimeout(() => {
+        showHint.value = false
+        // Allow fade-out (~200ms) before clearing the hint guard
+        hintEndTimer = setTimeout(() => { isHinting = false }, 250)
+      }, 1400)
+    }
+  }
+  hintRaf = requestAnimationFrame(step)
+}
+
+onMounted(() => {
+  try {
+    if (localStorage.getItem(HINT_KEY) === '1') return
+    localStorage.setItem(HINT_KEY, '1')
+  } catch {
+    // localStorage unavailable — skip the hint entirely
+    return
+  }
+  runHintDemo()
+})
+
 // ── Drag logic ──────────────────────────────────────────────────────────────
 let dragging = false
 
@@ -144,6 +218,7 @@ function pointerToNorm(clientX: number, clientY: number) {
 }
 
 function onMouseDown(e: MouseEvent) {
+  if (isHinting) return
   dragging = true
   updateFromPointer(e.clientX, e.clientY)
   window.addEventListener('mousemove', onMouseMove)
@@ -162,6 +237,7 @@ function onMouseUp() {
 }
 
 function onTouchStart(e: TouchEvent) {
+  if (isHinting) return
   dragging = true
   const t = e.touches[0]
   updateFromPointer(t.clientX, t.clientY)
@@ -194,6 +270,9 @@ onUnmounted(() => {
   window.removeEventListener('mouseup', onMouseUp)
   window.removeEventListener('touchmove', onTouchMove)
   window.removeEventListener('touchend', onTouchEnd)
+  if (hintRaf) cancelAnimationFrame(hintRaf)
+  if (hintHideTimer) clearTimeout(hintHideTimer)
+  if (hintEndTimer) clearTimeout(hintEndTimer)
 })
 </script>
 
@@ -257,5 +336,31 @@ onUnmounted(() => {
   text-align: center;
   color: var(--ink-2);
   pointer-events: none;
+}
+
+/* First-visit hint tooltip — sits below the wheel + label */
+.wheel-hint {
+  position: absolute;
+  bottom: -52px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  letter-spacing: .04em;
+  white-space: nowrap;
+  color: var(--ink-1, #2a2a2a);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+}
+
+.hint-fade-enter-active,
+.hint-fade-leave-active {
+  transition: opacity 200ms ease;
+}
+.hint-fade-enter-from,
+.hint-fade-leave-to {
+  opacity: 0;
 }
 </style>
