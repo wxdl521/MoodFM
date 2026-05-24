@@ -162,10 +162,6 @@
 
             <button class="chip-btn" @click="handleDislike">不喜欢</button>
 
-            <button class="chip-btn" @click="handleSwitchSource">
-              切换音源 · QQ
-            </button>
-
             <button class="chip-btn" @click="showLyrics = !showLyrics">歌词</button>
 
             <button class="chip-btn" @click="ui.toggleQueueDrawer()">
@@ -652,9 +648,6 @@ async function handleDislike() {
   handleNext()
 }
 
-function handleSwitchSource() {
-  // TODO: integrate platform switching
-}
 
 async function handleShare() {
   const song = player.currentSong
