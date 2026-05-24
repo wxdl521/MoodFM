@@ -97,7 +97,7 @@
 
         <!-- Resume last session -->
         <div class="home-section">
-          <div class="meta" style="margin-bottom: 10px">继续 · CONTINUE</div>
+          <div class="meta" style="margin-bottom: 10px">再来一次 · REPLAY</div>
           <div v-if="lastSession" class="resume-card">
             <MoodBlob :size="56" :drift="false" geometry="circle" />
             <div class="resume-info">
