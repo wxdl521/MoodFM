@@ -43,7 +43,7 @@
 
         <!-- LEFT: MoodBlob with pulse ring -->
         <div class="player-cover-wrap">
-          <div class="pulse-ring" :class="{ active: player.isPlaying }" />
+          <div class="pulse-ring" :class="{ active: player.isPlaying, loading: isAudioLoading && !player.isPlaying }" />
           <MoodBlob
             :size="440"
             geometry="blob"
@@ -417,6 +417,13 @@ const displayCurrentTime = computed(() =>
 )
 
 const canPrev = computed(() => player.history.length > 0)
+
+// Loading = has a track URL but Howl hasn't reached ready / loaded a different URL
+const isAudioLoading = computed(() => {
+  const url = player.currentSong?.audioUrl
+  if (!url) return false
+  return audio.loadedUrl.value !== url || !audio.isReady.value
+})
 
 const whyText = computed(() => {
   const reason = player.currentSong?.recommendReason
@@ -931,6 +938,15 @@ onUnmounted(() => {
 
 .pulse-ring.active {
   animation: pulse-ring 4s ease-out infinite;
+}
+
+.pulse-ring.loading {
+  animation: pulse-ring-loading 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse-ring-loading {
+  0%, 100% { transform: scale(1.00); opacity: 0.45; }
+  50%      { transform: scale(1.04); opacity: 0.75; }
 }
 
 @media (max-width: 900px) {
