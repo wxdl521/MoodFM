@@ -3,8 +3,12 @@
     ref="wheelRef"
     class="mood-wheel"
     :style="{ width: size + 'px', height: size + 'px' }"
+    role="application"
+    tabindex="0"
+    :aria-label="ariaLabel"
     @mousedown="onMouseDown"
     @touchstart.prevent="onTouchStart"
+    @keydown="onKeyDown"
   >
     <!-- Colour disc: conic hue ring + radial saturation overlay -->
     <div class="wheel-disc">
@@ -125,6 +129,14 @@ const moodLabel = computed(() => {
   if (y > 0.4  && x < -0.2) return 'focused · 专注'
   if (Math.abs(x) < 0.2 && Math.abs(y) < 0.2) return 'balanced · 平衡'
   return ''
+})
+
+// role=application + dynamic aria-label：屏幕阅读器朗读当前心情和键盘说明。
+// 2D 选择器不适合 role=slider（slider 是 1D），用 application 更准确。
+const ariaLabel = computed(() => {
+  const mood = moodLabel.value
+  const state = mood ? `当前 ${mood}` : '中性区'
+  return `心情选择器。${state}。方向键调整，Shift+方向键大步，Home 回到中央。`
 })
 
 
@@ -265,6 +277,30 @@ function updateFromPointer(clientX: number, clientY: number) {
   emit('change', nx, ny)
 }
 
+function onKeyDown(e: KeyboardEvent) {
+  if (isHinting) return
+  const step = e.shiftKey ? 0.15 : 0.05
+  let dx = 0, dy = 0
+  switch (e.key) {
+    case 'ArrowLeft':  dx = -step; break
+    case 'ArrowRight': dx =  step; break
+    case 'ArrowUp':    dy = -step; break
+    case 'ArrowDown':  dy =  step; break
+    case 'Home':
+      e.preventDefault()
+      dotNX.value = 0
+      dotNY.value = 0
+      emit('change', 0, 0)
+      return
+    default: return
+  }
+  e.preventDefault()
+  const { nx, ny } = clampDot(dotNX.value + dx, dotNY.value + dy)
+  dotNX.value = nx
+  dotNY.value = ny
+  emit('change', nx, ny)
+}
+
 onUnmounted(() => {
   window.removeEventListener('mousemove', onMouseMove)
   window.removeEventListener('mouseup', onMouseUp)
@@ -283,6 +319,14 @@ onUnmounted(() => {
   cursor: crosshair;
   flex-shrink: 0;
   border-radius: 50%;
+}
+
+.mood-wheel:focus {
+  outline: none;
+}
+.mood-wheel:focus-visible {
+  outline: 2px solid rgba(0, 0, 0, 0.5);
+  outline-offset: 6px;
 }
 
 .wheel-disc {
