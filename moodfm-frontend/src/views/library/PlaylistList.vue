@@ -21,18 +21,17 @@ onMounted(() => {
 </script>
 
 <template>
-  <div style="min-height:100vh;background:var(--bg);padding-bottom:80px;">
-    <div style="position:sticky;top:62px;z-index:5;background:var(--bg);padding:22px 56px;
-                border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center;">
+  <div class="page-root">
+    <div class="sticky-header">
       <div class="meta">SECTION V · LIBRARY · 我的歌单</div>
       <button class="btn-pill">+ 新建</button>
     </div>
 
-    <div style="padding:40px 56px;">
-      <h1 class="display" style="font-size:120px;margin:10px 0 8px;">Your <em>library</em>.</h1>
-      <div class="display-cn" style="font-size:28px;color:var(--ink-2);margin-bottom:24px;">跨平台合并 · 一处看完</div>
+    <div class="page-pad">
+      <h1 class="display page-title">Your <em>library</em>.</h1>
+      <div class="display-cn page-subtitle">跨平台合并 · 一处看完</div>
 
-      <div class="row" style="gap:0;border-bottom:1px solid var(--rule);margin-bottom:28px;overflow-x:auto;">
+      <div class="row tabs-row">
         <button
           v-for="t in ['我的','收藏','AI 生成','网易云','QQ 音乐']"
           :key="t"
@@ -64,59 +63,184 @@ onMounted(() => {
         @retry="reload"
       >
       <!-- Smart Playlists -->
-      <div v-if="store.smartPlaylists.length" style="margin-bottom:36px;">
-        <div class="meta" style="margin-bottom:14px;">SMART · 智能歌单</div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;">
+      <div v-if="store.smartPlaylists.length" class="smart-section">
+        <div class="meta section-label">SMART · 智能歌单</div>
+        <div class="smart-grid">
           <div
             v-for="sp in store.smartPlaylists"
             :key="sp.type"
-            style="cursor:pointer;padding:20px;border:1px solid var(--rule);border-radius:12px;
-                   transition:border-color .2s,box-shadow .2s;"
+            class="smart-card"
             @mouseover="($event.currentTarget as HTMLElement).style.borderColor='var(--ink)'"
             @mouseleave="($event.currentTarget as HTMLElement).style.borderColor='var(--rule)'"
             @click="router.push('/playlists/smart/' + sp.type)"
           >
-            <div style="font-size:28px;margin-bottom:8px;">
+            <div class="smart-icon">
               <span v-if="sp.icon === 'heart'">&#10084;</span>
               <span v-else-if="sp.icon === 'moon'">&#9790;</span>
               <span v-else-if="sp.icon === 'zap'">&#9889;</span>
               <span v-else-if="sp.icon === 'compass'">&#9788;</span>
             </div>
-            <div style="font-family:var(--serif-cn);font-size:18px;font-weight:500;">{{ sp.name }}</div>
-            <div class="meta" style="margin-top:4px;color:var(--ink-3);">{{ sp.songCount }} 首</div>
+            <div class="card-title">{{ sp.name }}</div>
+            <div class="meta meta-sub">{{ sp.songCount }} 首</div>
           </div>
         </div>
       </div>
 
-      <div class="meta" style="margin-bottom:14px;">YOUR LIBRARY · {{ store.lists.length }} 个歌单</div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;">
+      <div class="meta section-label">YOUR LIBRARY · {{ store.lists.length }} 个歌单</div>
+      <div class="library-grid">
         <div
           v-for="(l, i) in store.lists"
           :key="i"
           :data-mood="l.mood"
-          style="cursor:pointer;"
+          class="library-card"
           @click="router.push('/playlists/' + l.id)"
         >
-          <div style="position:relative;">
+          <div class="cover-wrap">
             <MoodBlob :size="230" :drift="false" geometry="blob" />
             <div
               v-if="l.ai"
-              class="meta"
-              style="position:absolute;top:8px;left:8px;padding:3px 8px;
-                     background:var(--ink);color:var(--bg);border-radius:999px;"
+              class="meta badge badge-ai"
             >AI</div>
             <div
-              class="meta"
-              style="position:absolute;bottom:8px;right:8px;padding:3px 8px;
-                     background:rgba(255,255,255,.86);color:var(--ink);border-radius:999px;"
+              class="meta badge badge-src"
             >{{ l.src }}</div>
           </div>
-          <div class="meta" style="margin-top:10px;">№ {{ String(i + 1).padStart(2, '0') }} · {{ l.en }}</div>
-          <div style="font-family:var(--serif-cn);font-size:18px;font-weight:500;margin-top:4px;text-wrap:pretty;">{{ l.t }}</div>
-          <div class="meta" style="margin-top:4px;color:var(--ink-3);">{{ l.n }} 首 · {{ l.m }} MIN</div>
+          <div class="meta card-index">№ {{ String(i + 1).padStart(2, '0') }} · {{ l.en }}</div>
+          <div class="card-title card-title-spaced">{{ l.t }}</div>
+          <div class="meta meta-sub">{{ l.n }} 首 · {{ l.m }} MIN</div>
         </div>
       </div>
       </LibraryStateView>
     </div>
   </div>
 </template>
+
+<style scoped>
+/* Page shell */
+.page-root {
+  min-height: 100vh;
+  background: var(--bg);
+  padding-bottom: 80px;
+}
+
+.sticky-header {
+  position: sticky;
+  top: 62px;
+  z-index: 5;
+  background: var(--bg);
+  padding: 22px 56px;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.page-pad {
+  padding: 40px 56px;
+}
+
+/* Heading area */
+.page-title {
+  font-size: 120px;
+  margin: 10px 0 8px;
+}
+
+.page-subtitle {
+  font-size: 28px;
+  color: var(--ink-2);
+  margin-bottom: 24px;
+}
+
+/* Tabs */
+.tabs-row {
+  gap: 0;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 28px;
+  overflow-x: auto;
+}
+
+/* Section labels (meta) */
+.section-label {
+  margin-bottom: 14px;
+}
+
+/* Smart playlists */
+.smart-section {
+  margin-bottom: 36px;
+}
+
+.smart-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.smart-card {
+  cursor: pointer;
+  padding: 20px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.smart-icon {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+/* Generic card title (shared by smart + library) */
+.card-title {
+  font-family: var(--serif-cn);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.card-title-spaced {
+  margin-top: 4px;
+  text-wrap: pretty;
+}
+
+.meta-sub {
+  margin-top: 4px;
+  color: var(--ink-3);
+}
+
+/* Library grid */
+.library-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+.library-card {
+  cursor: pointer;
+}
+
+.cover-wrap {
+  position: relative;
+}
+
+.badge {
+  position: absolute;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.badge-ai {
+  top: 8px;
+  left: 8px;
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.badge-src {
+  bottom: 8px;
+  right: 8px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--ink);
+}
+
+.card-index {
+  margin-top: 10px;
+}
+</style>
