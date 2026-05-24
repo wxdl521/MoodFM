@@ -125,9 +125,16 @@
             <div class="recommend-content">
               <div class="mono" style="font-size: 10px; letter-spacing: .16em; opacity: .85">{{ recommendTimeLabel }}</div>
               <div class="serif-en recommend-title">{{ recommendTitle }}</div>
-              <div style="font-size: 14px; margin-top: 4px; opacity: .9">{{ recommendSubtitle }}</div>
-              <div class="mono" style="font-size: 10px; letter-spacing: .12em; opacity: .7; margin-top: 8px">▶ 立即播放</div>
+              <div style="font-size: 14px; margin-top: 4px; opacity: .9; padding-right: 56px">{{ recommendSubtitle }}</div>
             </div>
+            <button
+              type="button"
+              class="recommend-card__cta"
+              aria-label="立即播放今日推荐"
+              @click.stop="handleRecommendPlay"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+            </button>
           </div>
         </div>
       </div>
@@ -634,6 +641,41 @@ onMounted(async () => {
   font-size: 36px;
   line-height: 1;
   margin-top: 6px;
+}
+
+/* Circular CTA button, anchored bottom-right of the recommend card.
+   Reversed colours (paper bg + ink fg) for high contrast against the
+   gradient mood background. Hover/active animation mirrors .btn. */
+.recommend-card__cta {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.22s ease;
+}
+.recommend-card__cta:hover {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+.recommend-card__cta:active {
+  transform: scale(0.94);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+  transition-duration: 0.07s;
+}
+.recommend-card__cta svg {
+  margin-left: 2px; /* visually centre the triangle inside the circle */
 }
 
 /* ── Recent sessions strip ───────────────────────────────────────── */
