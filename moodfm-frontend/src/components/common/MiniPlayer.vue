@@ -16,7 +16,7 @@
     <!-- Right: controls -->
     <div class="mini-player__controls" @click.stop>
       <!-- Prev -->
-      <button class="mini-player__btn" aria-label="上一首" @click="handlePrev">
+      <button class="mini-player__btn" aria-label="上一首" :disabled="!canPrev" @click="handlePrev">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
           <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z" />
         </svg>
@@ -60,6 +60,7 @@ const audioPlayer = useAudioPlayer()
 
 const currentSong = computed(() => playerStore.currentSong)
 const isPlaying = computed(() => playerStore.isPlaying)
+const canPrev = computed(() => playerStore.history.length > 0)
 
 function goToPlayer() {
   router.push('/player')
@@ -219,6 +220,19 @@ function handlePrev() {
 .mini-player__btn:active {
   transform: scale(0.85);
   transition-duration: 0.07s;
+}
+
+.mini-player__btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.mini-player__btn:disabled:hover {
+  background: transparent;
+}
+
+.mini-player__btn:disabled:active {
+  transform: none;
 }
 
 .mini-player:hover {
