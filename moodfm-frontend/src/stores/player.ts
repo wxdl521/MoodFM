@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { Song } from '@/types'
 
+const HISTORY_MAX = 50
+
 export const usePlayerStore = defineStore('player', () => {
   const currentSong = ref<Song | null>(null)
   const queue = ref<Song[]>([])
@@ -12,10 +14,20 @@ export const usePlayerStore = defineStore('player', () => {
   const sessionId = ref<string | null>(null)
   const trackNumber = ref(1)
 
-  const lastSong = ref<Song | null>(null)
+  // Playback history stack — most recent at the end. Used by prev() to walk
+  // backwards through previously-played songs. Capped at HISTORY_MAX entries;
+  // oldest entries are dropped when the cap is exceeded.
+  const history = ref<Song[]>([])
 
-  function setSong(song: Song) {
-    lastSong.value = currentSong.value
+  function setSong(song: Song, opts: { fromHistory?: boolean } = {}) {
+    // Push the outgoing song onto the history stack, unless this call is itself
+    // the result of popping from history (avoids infinite ping-pong on prev()).
+    if (!opts.fromHistory && currentSong.value) {
+      history.value.push(currentSong.value)
+      if (history.value.length > HISTORY_MAX) {
+        history.value.splice(0, history.value.length - HISTORY_MAX)
+      }
+    }
     currentSong.value = song
     progress.value = 0
     duration.value = song.duration
@@ -45,12 +57,13 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   function prev() {
-    if (!lastSong.value) return
-    queue.value.unshift(currentSong.value!)
-    currentSong.value = lastSong.value
-    progress.value = 0
-    duration.value = lastSong.value.duration
-    lastSong.value = null
+    if (history.value.length === 0) return
+    const previousSong = history.value.pop()!
+    // Put the current song back at the front of the queue so it isn't lost
+    if (currentSong.value) queue.value.unshift(currentSong.value)
+    setSong(previousSong, { fromHistory: true })
+    // Mirror next()'s track-number bookkeeping
+    if (trackNumber.value > 1) trackNumber.value--
   }
 
   function setProgress(v: number) {
@@ -74,6 +87,7 @@ export const usePlayerStore = defineStore('player', () => {
     volume,
     sessionId,
     trackNumber,
+    history,
     setSong,
     setQueue,
     addToQueue,

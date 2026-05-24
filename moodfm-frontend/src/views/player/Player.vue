@@ -82,23 +82,35 @@
           </div>
 
           <!-- Progress bar -->
-          <div class="progress-area" @click="handleProgressClick">
+          <div
+            ref="progressEl"
+            class="progress-area"
+            @mousedown="handleProgressDown"
+            @touchstart.passive="handleProgressDown"
+          >
             <div class="progress-track">
-              <div class="progress-fill" :style="{ width: `${player.progress * 100}%` }" />
+              <div class="progress-fill" :style="{ width: `${displayProgress * 100}%` }" />
               <div
                 class="progress-thumb"
-                :style="{ left: `${player.progress * 100}%` }"
+                :class="{ 'progress-thumb--dragging': isDragging }"
+                :style="{ left: `${displayProgress * 100}%` }"
               />
             </div>
             <div class="mono between" style="font-size: 11px; margin-top: 8px; opacity: .8">
-              <span>{{ formatTime(currentTime) }}</span>
+              <span>{{ formatTime(displayCurrentTime) }}</span>
               <span>{{ formatTime(totalDuration) }}</span>
             </div>
           </div>
 
           <!-- Main controls -->
           <div class="ctrl-row">
-            <button class="ctrl-btn" aria-label="上一首" @click="handlePrev">
+            <button
+              class="ctrl-btn"
+              aria-label="上一首"
+              :disabled="!canPrev"
+              :class="{ 'ctrl-btn--disabled': !canPrev }"
+              @click="handlePrev"
+            >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
             </button>
 
@@ -322,6 +334,11 @@ const lastSkippedArtist = ref<string | null>(null)
 const consecutiveSkips  = ref(0)
 let infoToastTimer: ReturnType<typeof setTimeout> | null = null
 
+// ── Progress drag state ─────────────────────────────────────────────────────
+const progressEl = ref<HTMLElement | null>(null)
+const isDragging = ref(false)
+const dragRatio  = ref(0)
+
 function showInfoToast(msg: string, durationMs = 2500) {
   infoToast.value = msg
   if (infoToastTimer) clearTimeout(infoToastTimer)
@@ -385,6 +402,16 @@ const totalDuration = computed(() =>
 const currentTime = computed(() =>
   audio.currentTime.value > 0 ? audio.currentTime.value : player.progress * totalDuration.value,
 )
+
+// While dragging, render the dragRatio instead of the actual playback progress
+const displayProgress = computed(() =>
+  isDragging.value ? dragRatio.value : player.progress,
+)
+const displayCurrentTime = computed(() =>
+  isDragging.value ? dragRatio.value * totalDuration.value : currentTime.value,
+)
+
+const canPrev = computed(() => player.history.length > 0)
 
 const whyText = computed(() => {
   const reason = player.currentSong?.recommendReason
@@ -625,16 +652,64 @@ async function handleShare() {
   }
 }
 
-// ── Progress bar click ───────────────────────────────────────────────────────
-function handleProgressClick(e: MouseEvent) {
-  const el = e.currentTarget as HTMLElement
+// ── Progress bar drag (mouse + touch) ────────────────────────────────────────
+function getEventClientX(e: MouseEvent | TouchEvent): number {
+  if ('touches' in e) {
+    return e.touches[0]?.clientX ?? (e as TouchEvent).changedTouches[0]?.clientX ?? 0
+  }
+  return (e as MouseEvent).clientX
+}
+
+function computeRatio(clientX: number): number {
+  const el = progressEl.value
+  if (!el) return 0
   const rect = el.getBoundingClientRect()
-  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+  if (rect.width <= 0) return 0
+  return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+}
+
+function handleProgressDown(e: MouseEvent | TouchEvent) {
+  if (!progressEl.value) return
+  // Don't preventDefault on touchstart (passive listener) — would break scroll
+  // For mouse: prevent text selection during drag
+  if ('clientX' in e) e.preventDefault()
+  dragRatio.value = computeRatio(getEventClientX(e))
+  isDragging.value = true
+  window.addEventListener('mousemove', handleProgressMove)
+  window.addEventListener('mouseup', handleProgressUp)
+  window.addEventListener('touchmove', handleProgressMove, { passive: false })
+  window.addEventListener('touchend', handleProgressUp)
+  window.addEventListener('touchcancel', handleProgressUp)
+}
+
+function handleProgressMove(e: MouseEvent | TouchEvent) {
+  if (!isDragging.value) return
+  // Only preventDefault when it's actually possible (cancelable touchmove or mousemove)
+  if (e.cancelable) e.preventDefault()
+  dragRatio.value = computeRatio(getEventClientX(e))
+}
+
+function handleProgressUp() {
+  if (!isDragging.value) {
+    cleanupProgressListeners()
+    return
+  }
+  const ratio = dragRatio.value
+  isDragging.value = false
+  cleanupProgressListeners()
   if (totalDuration.value > 0 && player.currentSong?.audioUrl) {
     audio.seek(ratio * totalDuration.value)
   } else {
     player.setProgress(ratio)
   }
+}
+
+function cleanupProgressListeners() {
+  window.removeEventListener('mousemove', handleProgressMove)
+  window.removeEventListener('mouseup', handleProgressUp)
+  window.removeEventListener('touchmove', handleProgressMove)
+  window.removeEventListener('touchend', handleProgressUp)
+  window.removeEventListener('touchcancel', handleProgressUp)
 }
 
 // ── Navigation ───────────────────────────────────────────────────────────────
@@ -694,6 +769,7 @@ onUnmounted(() => {
     clearTimeout(infoToastTimer)
     infoToastTimer = null
   }
+  cleanupProgressListeners()
 })
 </script>
 
@@ -856,6 +932,11 @@ onUnmounted(() => {
 .progress-area {
   margin-top: 28px;
   cursor: pointer;
+  /* Extend the touch target vertically without changing visual height */
+  padding: 10px 0;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .progress-track {
@@ -883,7 +964,20 @@ onUnmounted(() => {
   border-radius: 50%;
   background: #fff;
   transform: translateX(-50%);
-  transition: left 0.2s linear;
+  transition: left 0.2s linear, width 0.15s ease, height 0.15s ease, top 0.15s ease;
+}
+
+.progress-thumb--dragging {
+  width: 14px;
+  height: 14px;
+  top: -6px;
+  transition: width 0.15s ease, height 0.15s ease, top 0.15s ease;
+}
+
+/* While dragging, remove the smoothing transition so motion tracks the pointer */
+.progress-area:has(.progress-thumb--dragging) .progress-fill,
+.progress-area:has(.progress-thumb--dragging) .progress-thumb {
+  transition: width 0.15s ease, height 0.15s ease, top 0.15s ease;
 }
 
 /* ── Controls ─────────────────────────────────────────────────────── */
@@ -919,6 +1013,22 @@ onUnmounted(() => {
 .ctrl-btn:active {
   transform: scale(0.88);
   transition-duration: 0.07s;
+}
+
+.ctrl-btn--disabled,
+.ctrl-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.ctrl-btn--disabled:hover,
+.ctrl-btn:disabled:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.ctrl-btn--disabled:active,
+.ctrl-btn:disabled:active {
+  transform: none;
 }
 
 .ctrl-btn--primary {
