@@ -1,5 +1,6 @@
 package com.moodfm.domain.dto.radio;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.Data;
@@ -7,7 +8,8 @@ import lombok.Data;
 @Data
 public class MoodInputRequest {
 
-    /** 自然语言输入，与 scene/moodWheel 三选一 */
+    /** 自然语言输入，与 scene/moodWheel 三选一。前端历史字段名 moodText 通过 alias 兼容 */
+    @JsonAlias("moodText")
     private String text;
 
     /** 场景预设: commute/study/workout/sleep/party/writing */
