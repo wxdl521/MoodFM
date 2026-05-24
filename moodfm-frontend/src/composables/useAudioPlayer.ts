@@ -15,7 +15,7 @@
 import { ref } from 'vue'
 import { Howl } from 'howler'
 import { usePlayerStore } from '@/stores/player'
-import api from '@/api/client'
+import { radioApi } from '@/api/radio'
 import { logger } from '@/utils/logger'
 
 const isReady = ref(false)
@@ -112,16 +112,14 @@ function load(url: string): Promise<void> {
         currentTime.value = 0
         store.setProgress(0)
         store.next()
-        // Fire-and-forget: record completed play
+        // Fire-and-forget: record completed play; silent on failure
         if (completedSong?.id && sessionId) {
-          api.post('/radio/feedback', {
+          radioApi.sendFeedback('completed', {
             sessionId: Number(sessionId),
             songId: Number(completedSong.id),
-            eventType: 'completed',
             playedSeconds: totalSecs,
             totalSeconds: totalSecs,
             platform: completedSong.platform || 'netease',
-            // silent: feedback 上报失败不影响播放
           }).catch(err => { logger.warn('player:feedback-completed', err) })
         }
         const next = store.currentSong

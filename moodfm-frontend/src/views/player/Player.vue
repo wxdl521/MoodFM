@@ -316,7 +316,6 @@ import { blacklistApi } from '@/api/blacklist'
 import { songApi, type LyricLine } from '@/api/song'
 import { radioApi } from '@/api/radio'
 import { playlistApi } from '@/api/playlist'
-import api from '@/api/client'
 import { logger } from '@/utils/logger'
 
 const router = useRouter()
@@ -366,11 +365,10 @@ watch(() => player.volume, (newVol) => {
     const song = player.currentSong
     const sid = player.sessionId
     if (song && sid) {
-      api.post('/radio/feedback', {
+      // silent: feedback 上报失败不影响播放
+      radioApi.sendFeedback('volume_up', {
         sessionId: Number(sid),
         songId: Number(song.id),
-        eventType: 'volume_up',
-        // silent: feedback 上报失败不影响播放
       }).catch(err => { logger.warn('player:feedback-volume', err) })
     }
   }
@@ -563,14 +561,13 @@ function _advanceQueue() {
 
 function _sendSkipFeedback(song: typeof player.currentSong, sid: string | null, playedSecs: number, totalSecs: number) {
   if (!song?.id || !sid) return
-  api.post('/radio/feedback', {
+  // silent: feedback 上报失败不影响播放
+  radioApi.sendFeedback('skip', {
     sessionId: Number(sid),
     songId: Number(song.id),
-    eventType: 'skip',
     playedSeconds: playedSecs,
     totalSeconds: totalSecs,
     platform: song.platform || 'netease',
-    // silent: feedback 上报失败不影响播放
   }).catch(err => { logger.warn('player:feedback-skip', err) })
 }
 
@@ -645,7 +642,7 @@ async function handleDislike() {
   const sid = player.sessionId
   if (song && sid) {
     try {
-      await radioApi.feedback({ songId: song.id, sessionId: sid, eventType: 'dislike' })
+      await radioApi.sendFeedback('dislike', { songId: Number(song.id), sessionId: Number(sid) })
     } catch (err) {
       // silent: dislike 是用户操作，但即使 feedback 失败也仍然要 handleNext
       // 体验上跳过下一首已经是用户期望，不再额外弹 toast 干扰

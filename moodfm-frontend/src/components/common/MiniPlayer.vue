@@ -51,7 +51,7 @@ import { useRouter } from 'vue-router'
 import { usePlayerStore } from '@/stores/player'
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import MoodBlob from './MoodBlob.vue'
-import api from '@/api/client'
+import { radioApi } from '@/api/radio'
 import { logger } from '@/utils/logger'
 
 const router = useRouter()
@@ -93,14 +93,13 @@ function handleNext() {
     audioPlayer.stop()
   }
   if (prevSong?.id && sid) {
-    api.post('/radio/feedback', {
+    // silent: feedback 上报失败不影响播放
+    radioApi.sendFeedback('skip', {
       sessionId: Number(sid),
       songId: Number(prevSong.id),
-      eventType: 'skip',
       playedSeconds: playedSecs,
       totalSeconds: totalSecs,
       platform: prevSong.platform || 'netease',
-      // silent: feedback 上报失败不影响播放
     }).catch(err => { logger.warn('miniplayer:feedback-skip', err) })
   }
 }
