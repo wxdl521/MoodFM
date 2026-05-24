@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePlayerStore } from '@/stores/player'
 import MoodBlob from '@/components/common/MoodBlob.vue'
+import LibraryStateView from '@/components/common/LibraryStateView.vue'
 import { historyApi } from '@/api/history'
 
 const router = useRouter()
@@ -108,6 +109,7 @@ async function loadPage(p: number, append: boolean) {
 
 async function loadInitial() {
   loading.value = true
+  error.value = null
   page.value = 1
   try {
     await loadPage(1, false)
@@ -237,9 +239,17 @@ onUnmounted(() => {
         <template v-else>这一周，你听过的每一首</template>
       </div>
 
-      <div v-if="loading" class="meta" style="color:var(--ink-3);">加载中…</div>
-      <div v-else-if="error" class="meta" style="color:var(--mood-b);">{{ error }}</div>
-      <div v-else>
+      <LibraryStateView
+        :loading="loading"
+        :error="error"
+        :empty="days.length === 0"
+        :skeleton-rows="6"
+        skeleton-layout="list"
+        empty-title="还没有播放记录"
+        empty-description="播放任意歌曲后会自动出现在这里，按日期分组。"
+        empty-glyph="◷"
+        @retry="loadInitial"
+      >
         <div style="position:relative;padding-left:28px;">
           <div style="position:absolute;left:10px;top:8px;bottom:8px;width:1px;background:var(--rule);" />
           <div v-for="(d, di) in days" :key="di" style="margin-bottom:32px;">
@@ -274,7 +284,7 @@ onUnmounted(() => {
           <div v-if="loadingMore" class="meta" style="margin-left:-28px;color:var(--ink-3);padding:12px 0;">加载中…</div>
           <div v-else-if="allItems.length >= total && total > 0" class="meta" style="margin-left:-28px;color:var(--ink-3);padding:12px 0;">已加载全部 {{ total }} 条记录</div>
         </div>
-      </div>
+      </LibraryStateView>
     </div>
   </div>
 </template>

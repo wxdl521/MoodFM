@@ -1,14 +1,23 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import MoodBlob from '@/components/common/MoodBlob.vue'
+import LibraryStateView from '@/components/common/LibraryStateView.vue'
 import { usePlaylistStore } from '@/stores/playlist'
 
 const router = useRouter()
 const tab = ref('我的')
 const store = usePlaylistStore()
 
-onMounted(() => store.load())
+const isEmpty = computed(() => store.lists.length === 0 && store.smartPlaylists.length === 0)
+
+function reload() {
+  store.load(true).catch(() => { /* error is captured on the store */ })
+}
+
+onMounted(() => {
+  store.load().catch(() => { /* error is captured on the store */ })
+})
 </script>
 
 <template>
@@ -43,6 +52,17 @@ onMounted(() => store.load())
         >{{ t }}</button>
       </div>
 
+      <LibraryStateView
+        :loading="store.loading && store.lists.length === 0"
+        :error="store.error"
+        :empty="isEmpty"
+        :skeleton-rows="8"
+        skeleton-layout="grid"
+        empty-title="还没有歌单"
+        empty-description="登录后绑定网易云 / QQ 音乐，或在上方点击「+ 新建」即可创建第一个歌单。"
+        empty-glyph="♪"
+        @retry="reload"
+      >
       <!-- Smart Playlists -->
       <div v-if="store.smartPlaylists.length" style="margin-bottom:36px;">
         <div class="meta" style="margin-bottom:14px;">SMART · 智能歌单</div>
@@ -96,6 +116,7 @@ onMounted(() => store.load())
           <div class="meta" style="margin-top:4px;color:var(--ink-3);">{{ l.n }} 首 · {{ l.m }} MIN</div>
         </div>
       </div>
+      </LibraryStateView>
     </div>
   </div>
 </template>

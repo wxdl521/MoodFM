@@ -13,20 +13,17 @@
         被加入黑名单的歌曲不会在电台中出现。
       </p>
 
-      <div v-if="loading" style="padding: 24px 0;">
-        <div v-for="i in 5" :key="i" class="skeleton-row" />
-      </div>
-
-      <div v-else-if="error" class="meta" style="color: var(--ink-3); padding: 48px 0;">
-        加载失败 · {{ error }}
-      </div>
-
-      <div v-else-if="items.length === 0" class="empty-state">
-        <div class="display" style="font-size: 56px; opacity: 0.18;">∅</div>
-        <div class="meta" style="margin-top: 16px; color: var(--ink-3);">黑名单为空 · 电台将正常推荐所有歌曲</div>
-      </div>
-
-      <div v-else>
+      <LibraryStateView
+        :loading="loading"
+        :error="error"
+        :empty="items.length === 0"
+        :skeleton-rows="5"
+        skeleton-layout="list"
+        empty-title="黑名单为空"
+        empty-description="还没有屏蔽任何歌曲，电台将正常推荐所有内容。"
+        empty-glyph="∅"
+        @retry="loadItems"
+      >
         <div class="list-header row" style="padding: 10px 16px; color: var(--ink-3); border-bottom: 1px solid var(--rule);">
           <div class="meta" style="flex: 2.5;">SONG · 歌曲</div>
           <div class="meta" style="flex: 1.5;">ARTIST · 艺术家</div>
@@ -54,7 +51,7 @@
             >{{ removingId === item.id ? '…' : '移除' }}</button>
           </div>
         </div>
-      </div>
+      </LibraryStateView>
     </div>
 
     <MiniPlayer />
@@ -64,6 +61,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
+import LibraryStateView from '@/components/common/LibraryStateView.vue'
 import { blacklistApi } from '@/api/blacklist'
 
 interface BlacklistItem {
@@ -95,7 +93,9 @@ async function removeItem(item: BlacklistItem) {
   removingId.value = null
 }
 
-onMounted(async () => {
+async function loadItems() {
+  loading.value = true
+  error.value = null
   try {
     const res = await blacklistApi.getAll()
     const raw: any[] = (res as any[]) ?? []
@@ -112,6 +112,10 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+}
+
+onMounted(() => {
+  loadItems()
 })
 </script>
 
@@ -163,23 +167,5 @@ onMounted(async () => {
 .remove-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.empty-state {
-  padding: 80px 0;
-  text-align: center;
-}
-
-.skeleton-row {
-  height: 56px;
-  border-radius: 8px;
-  background: var(--bg-2);
-  margin-bottom: 4px;
-  animation: pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 0.6; }
 }
 </style>

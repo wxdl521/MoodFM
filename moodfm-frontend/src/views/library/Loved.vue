@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { usePlayerStore } from '@/stores/player'
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import MoodBlob from '@/components/common/MoodBlob.vue'
+import LibraryStateView from '@/components/common/LibraryStateView.vue'
 import { playlistApi } from '@/api/playlist'
 import type { Song } from '@/types'
 
@@ -45,7 +46,9 @@ function playRandom() {
   playSong(idx)
 }
 
-onMounted(async () => {
+async function loadLoved() {
+  loading.value = true
+  error.value = null
   try {
     const data = await playlistApi.loved()
     fullSongs.value = data
@@ -63,6 +66,10 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+}
+
+onMounted(() => {
+  loadLoved()
 })
 
 const filtered = computed(() =>
@@ -118,28 +125,40 @@ function filteredIndex(displayIndex: number): number {
       </div>
 
       <div>
-        <div
-          v-for="(s, i) in filtered"
-          :key="i"
-          :data-mood="s.mood"
-          class="row"
-          style="gap:14px;padding:14px 4px;border-bottom:1px solid var(--rule);cursor:pointer;"
-          @click="playSong(filteredIndex(i))"
+        <LibraryStateView
+          :loading="loading"
+          :error="error"
+          :empty="filtered.length === 0"
+          :skeleton-rows="6"
+          skeleton-layout="list"
+          empty-title="还没有红心歌曲"
+          empty-description="在播放器里点♥就能把喜欢的歌加进来，多端的红心会自动合并。"
+          empty-glyph="♥"
+          @retry="loadLoved"
         >
-          <div class="mono" style="font-size:11px;color:var(--ink-3);width:26px;flex-shrink:0;">{{ String(i + 1).padStart(2, '0') }}</div>
-          <MoodBlob :size="56" :drift="false" geometry="blob" style="flex-shrink:0;" />
-          <div style="flex:1;min-width:0;">
-            <div class="row" style="gap:8px;align-items:baseline;">
-              <span style="font-family:var(--serif-en);font-style:italic;font-size:20px;
-                           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ s.t }}</span>
-              <span style="font-size:12px;color:var(--ink-3);white-space:nowrap;">· {{ s.a }}</span>
+          <div
+            v-for="(s, i) in filtered"
+            :key="i"
+            :data-mood="s.mood"
+            class="row"
+            style="gap:14px;padding:14px 4px;border-bottom:1px solid var(--rule);cursor:pointer;"
+            @click="playSong(filteredIndex(i))"
+          >
+            <div class="mono" style="font-size:11px;color:var(--ink-3);width:26px;flex-shrink:0;">{{ String(i + 1).padStart(2, '0') }}</div>
+            <MoodBlob :size="56" :drift="false" geometry="blob" style="flex-shrink:0;" />
+            <div style="flex:1;min-width:0;">
+              <div class="row" style="gap:8px;align-items:baseline;">
+                <span style="font-family:var(--serif-en);font-style:italic;font-size:20px;
+                             white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ s.t }}</span>
+                <span style="font-size:12px;color:var(--ink-3);white-space:nowrap;">· {{ s.a }}</span>
+              </div>
+              <div class="meta" style="margin-top:2px;color:var(--ink-3);">{{ s.al }}</div>
             </div>
-            <div class="meta" style="margin-top:2px;color:var(--ink-3);">{{ s.al }}</div>
+            <span class="meta" style="color:var(--ink-3);min-width:70px;">{{ s.src }}</span>
+            <span class="mono" style="font-size:12px;color:var(--ink-2);width:50px;text-align:right;flex-shrink:0;">{{ s.d }}</span>
+            <span style="color:var(--mood-b);font-size:18px;flex-shrink:0;">♥</span>
           </div>
-          <span class="meta" style="color:var(--ink-3);min-width:70px;">{{ s.src }}</span>
-          <span class="mono" style="font-size:12px;color:var(--ink-2);width:50px;text-align:right;flex-shrink:0;">{{ s.d }}</span>
-          <span style="color:var(--mood-b);font-size:18px;flex-shrink:0;">♥</span>
-        </div>
+        </LibraryStateView>
       </div>
     </div>
   </div>
