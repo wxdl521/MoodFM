@@ -7,9 +7,11 @@ import { playlistApi } from '@/api/playlist'
 import { songApi } from '@/api/song'
 import type { Song, Platform } from '@/types'
 
-const knownPlatforms: Platform[] = ['netease', 'qqmusic']
+function isPlatform(p: string | undefined): p is Platform {
+  return p === 'netease' || p === 'qqmusic'
+}
 function toPlatform(p?: string): Platform {
-  return knownPlatforms.includes(p as Platform) ? p as Platform : 'netease'
+  return isPlatform(p) ? p : 'netease'
 }
 
 const router = useRouter()
