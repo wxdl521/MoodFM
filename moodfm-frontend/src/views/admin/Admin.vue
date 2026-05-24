@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import NavBar from '@/components/common/NavBar.vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import api from '@/api/client'
+import { logger } from '@/utils/logger'
 
 const router = useRouter()
 const loading = ref(true)
@@ -23,8 +24,9 @@ async function loadStats() {
   try {
     const data = await api.get('/admin/stats')
     if (data) Object.assign(stats.value, data)
-  } catch {
-    // silently fail
+  } catch (err) {
+    // silent: stats 加载失败时显示 0，不打断管理员浏览
+    logger.warn('admin:load-stats', err)
   }
 }
 
@@ -33,8 +35,9 @@ async function loadUsers() {
   try {
     const data = await api.get('/admin/users')
     users.value = data as any[]
-  } catch {
-    // likely not admin
+  } catch (err) {
+    // silent: 非管理员或权限不足时返回空列表
+    logger.warn('admin:load-users', err)
   } finally {
     loading.value = false
   }
@@ -45,8 +48,13 @@ async function toggleStatus(u: { id: number; status: number }) {
   try {
     await api.put(`/admin/users/${u.id}/status`, { status: newStatus })
     u.status = newStatus
-  } catch {
-    // silently fail — status remains unchanged
+  } catch (err) {
+    // 用户主动操作：状态切换失败需提示。本页未引入 __adminToast，先用 alert 兜底
+    logger.warn('admin:toggle-user-status', err)
+    if (typeof window !== 'undefined') {
+      const toast = (window as { __adminToast?: (msg: string, type?: string) => void }).__adminToast
+      if (toast) toast('操作失败，请稍后重试', 'err')
+    }
   }
 }
 

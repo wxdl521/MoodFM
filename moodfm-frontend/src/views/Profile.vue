@@ -176,6 +176,7 @@ import MoodBlob from '@/components/common/MoodBlob.vue'
 import { useUserStore } from '@/stores/user'
 import { useAuthStore } from '@/stores/auth'
 import { userApi } from '@/api/user'
+import { logger } from '@/utils/logger'
 
 const userStore = useUserStore()
 const authStore = useAuthStore()
@@ -198,7 +199,9 @@ onMounted(async () => {
     const user = await userStore.fetchProfile()
     form.value = { username: user?.username ?? '', email: user?.email ?? '', bio: '' }
     if (user?.avatarUrl) avatarPreview.value = user.avatarUrl
-  } catch {
+  } catch (err) {
+    // silent: profile 加载失败时 form 保留默认值
+    logger.warn('profile:fetch', err)
   } finally {
     loading.value = false
   }
@@ -214,7 +217,10 @@ async function onAvatarChange(e: Event) {
   avatarPreview.value = URL.createObjectURL(file)
   try {
     await userApi.uploadAvatar(file)
-  } catch {
+  } catch (err) {
+    // 用户主动操作：上传头像失败，目前页面无 toast 组件，先 logger 记录
+    // 失败时 avatarPreview 已经设了本地 URL，刷新后会回退
+    logger.warn('profile:upload-avatar', err)
   }
 }
 
@@ -225,7 +231,9 @@ async function saveProfile() {
     await userStore.updateProfile({ username: form.value.username })
     profileSaved.value = true
     setTimeout(() => { profileSaved.value = false }, 2500)
-  } catch {
+  } catch (err) {
+    // 用户主动操作：保存资料失败，页面无 toast 组件，先 logger 记录
+    logger.warn('profile:save', err)
   } finally {
     savingProfile.value = false
   }
@@ -263,7 +271,9 @@ async function deleteAccount() {
   try {
     await userApi.deleteAccount()
     authStore.logout()
-  } catch {
+  } catch (err) {
+    // 用户主动操作：注销账户失败，页面无 toast 组件，先 logger 记录
+    logger.warn('profile:delete-account', err)
   }
 }
 </script>

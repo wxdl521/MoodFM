@@ -10,6 +10,7 @@ import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/compon
 import { CanvasRenderer } from 'echarts/renderers'
 import { insightsApi } from '@/api/insights'
 import html2canvas from 'html2canvas'
+import { logger } from '@/utils/logger'
 
 use([LineChart, RadarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
@@ -229,7 +230,9 @@ async function fetchInsights() {
         if (s.weekRange) headerDateRange.value = s.weekRange.replace(' — ', ' → ')
       }
     }
-  } catch {
+  } catch (err) {
+    // silent: insights 数据加载失败时保留 placeholder 不打断浏览
+    logger.warn('insights:fetch', err)
   } finally {
     loading.value = false
   }

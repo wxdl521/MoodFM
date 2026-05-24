@@ -6,6 +6,7 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import api from '@/api/client'
+import { logger } from '@/utils/logger'
 
 use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 
@@ -47,13 +48,19 @@ onMounted(async () => {
   try {
     const data = await api.get('/admin/stats')
     if (data) Object.assign(stats.value, data)
-  } catch {}
+  } catch (err) {
+    // silent: dashboard stats 加载失败时显示 0
+    logger.warn('admin:dashboard-stats', err)
+  }
 
   // 最近注册用户
   try {
     const users = await api.get('/admin/users/recent?limit=5')
     if (Array.isArray(users)) recentUsers.value = users
-  } catch {}
+  } catch (err) {
+    // silent: 最近用户列表加载失败时显示空
+    logger.warn('admin:dashboard-recent-users', err)
+  }
 
   // DAU 折线图
   try {
@@ -62,7 +69,10 @@ onMounted(async () => {
       chartOption.value.xAxis.data = activity.labels
       chartOption.value.series[0].data = activity.dau
     }
-  } catch {}
+  } catch (err) {
+    // silent: 活跃趋势加载失败时展示空图
+    logger.warn('admin:dashboard-activity', err)
+  }
 
   // 平台绑定统计
   try {
@@ -81,7 +91,10 @@ onMounted(async () => {
         alerts.value.push({ type: 'warn', text: `共 ${expiringTotal} 名用户的 Cookie 将在 3 天内过期，建议提醒刷新` })
       }
     }
-  } catch {}
+  } catch (err) {
+    // silent: 平台统计加载失败时显示空
+    logger.warn('admin:dashboard-platform-stats', err)
+  }
 })
 </script>
 

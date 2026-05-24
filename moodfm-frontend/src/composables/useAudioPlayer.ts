@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { Howl } from 'howler'
 import { usePlayerStore } from '@/stores/player'
 import api from '@/api/client'
+import { logger } from '@/utils/logger'
 
 // Module-level singleton — shared across Player.vue and MiniPlayer.vue
 const isReady = ref(false)
@@ -107,7 +108,8 @@ function load(url: string): Promise<void> {
             playedSeconds: totalSecs,
             totalSeconds: totalSecs,
             platform: completedSong.platform || 'netease',
-          }).catch(() => {})
+            // silent: feedback 上报失败不影响播放
+          }).catch(err => { logger.warn('player:feedback-completed', err) })
         }
         const next = store.currentSong
         if (next?.audioUrl) {

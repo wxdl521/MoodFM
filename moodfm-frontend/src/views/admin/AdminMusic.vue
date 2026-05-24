@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import '@/assets/styles/admin.css'
 import { blacklistAdminApi, GlobalBlacklist } from '@/api/admin'
+import { logger } from '@/utils/logger'
 
 const tab = ref<'artists' | 'songs' | 'keywords'>('artists')
 const search = ref('')
@@ -22,7 +23,8 @@ async function fetchTab(type: 'artist' | 'song' | 'keyword', q?: string) {
     if (type === 'artist') artists.value = data
     else if (type === 'song') songs.value = data
     else keywords.value = data
-  } catch {
+  } catch (err) {
+    logger.warn('admin:music-fetch', err)
     toast('操作失败，请重试', 'warn')
   } finally {
     loading.value = false
@@ -46,7 +48,8 @@ async function removeArtist(id: number) {
     await blacklistAdminApi.remove(id)
     artists.value = artists.value.filter(a => a.id !== id)
     toast('已从黑名单移除')
-  } catch {
+  } catch (err) {
+    logger.warn('admin:music-remove-artist', err)
     toast('操作失败，请重试', 'warn')
   }
 }
@@ -56,7 +59,8 @@ async function removeSong(id: number) {
     await blacklistAdminApi.remove(id)
     songs.value = songs.value.filter(s => s.id !== id)
     toast('已从黑名单移除')
-  } catch {
+  } catch (err) {
+    logger.warn('admin:music-remove-song', err)
     toast('操作失败，请重试', 'warn')
   }
 }
@@ -66,7 +70,8 @@ async function removeKeyword(id: number) {
     await blacklistAdminApi.remove(id)
     keywords.value = keywords.value.filter(k => k.id !== id)
     toast('已从黑名单移除')
-  } catch {
+  } catch (err) {
+    logger.warn('admin:music-remove-keyword', err)
     toast('操作失败，请重试', 'warn')
   }
 }
@@ -87,7 +92,8 @@ async function submitAdd() {
     toast('已添加至黑名单')
     closeAdd()
     await fetchTab(tabType(), search.value)
-  } catch {
+  } catch (err) {
+    logger.warn('admin:music-add', err)
     toast('操作失败，请重试', 'warn')
   }
 }

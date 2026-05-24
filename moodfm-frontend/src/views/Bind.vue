@@ -393,6 +393,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { platformApi } from '@/api/platform'
+import { logger } from '@/utils/logger'
 
 const isMobile = ref(window.innerWidth < 768)
 const modalOpen = ref(false)
@@ -491,8 +492,9 @@ function startQrPolling(platform: string) {
         qrStatus.value = 'expired'
         clearQrTimers()
       }
-    } catch {
-      // keep polling on transient errors
+    } catch (err) {
+      // silent: 轮询单次失败属于正常情况，下一周期继续，不弹 toast 骚扰
+      logger.warn('bind:qr-poll', err)
     }
   }, 2500)
 }
@@ -512,7 +514,9 @@ async function refreshQr() {
     qrImageUrl.value = res.qrimg
     startQrTimer()
     startQrPolling(activePlatform.value)
-  } catch {
+  } catch (err) {
+    // 用户主动操作：二维码生成失败，UI 已用 expired 状态提示，再记日志
+    logger.warn('bind:qr-generate', err)
     qrStatus.value = 'expired'
   }
 }
@@ -544,7 +548,10 @@ async function loadBindings() {
         }
       }
     }
-  } catch {}
+  } catch (err) {
+    // silent: 绑定列表加载失败时保留当前展示状态，避免遮挡 UI
+    logger.warn('bind:load-bindings', err)
+  }
 }
 
 onMounted(() => {

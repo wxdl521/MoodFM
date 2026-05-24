@@ -1,5 +1,6 @@
 import { ref, onUnmounted } from 'vue'
 import { Client, type IMessage } from '@stomp/stompjs'
+import { logger } from '@/utils/logger'
 
 export interface Notification {
   id: string
@@ -40,8 +41,9 @@ export function useNotifications() {
               const idx = notifications.value.indexOf(notification)
               if (idx >= 0) notifications.value.splice(idx, 1)
             }, 8000)
-          } catch {
-            // ignore
+          } catch (err) {
+            // silent: 通知服务偶发畸形帧无需骚扰用户
+            logger.warn('notify:malformed-frame', err)
           }
         })
       },

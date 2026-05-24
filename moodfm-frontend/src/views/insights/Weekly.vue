@@ -144,6 +144,7 @@ import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { reportsApi } from '@/api/reports'
 import html2canvas from 'html2canvas'
+import { logger } from '@/utils/logger'
 
 use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 
@@ -325,8 +326,10 @@ async function handleShare() {
 onMounted(async () => {
   try {
     const [latest, all] = await Promise.all([
-      reportsApi.generate().catch(() => null),
-      reportsApi.listReports().catch(() => []),
+      // silent: generate 失败时回退到列表中最近的一份，避免单点失败阻塞页面
+      reportsApi.generate().catch(err => { logger.warn('weekly:report-generate', err); return null }),
+      // silent: 列表为空时 UI 自然为空，无需 toast
+      reportsApi.listReports().catch(err => { logger.warn('weekly:report-list', err); return [] }),
     ])
     weekOptions.value = all.map(r => ({
       id: r.id,

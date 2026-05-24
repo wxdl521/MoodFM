@@ -2,6 +2,7 @@
 import { ref, onMounted, watch } from 'vue'
 import '@/assets/styles/admin.css'
 import { configAdminApi, auditLogAdminApi, AdminAuditLog } from '@/api/admin'
+import { logger } from '@/utils/logger'
 
 interface FlagItem { key: string; label: string; desc: string; on: boolean }
 interface KvItem { key: string; val: string; desc: string }
@@ -57,7 +58,8 @@ async function loadFlags() {
     for (const f of flags.value) {
       if (f.key in result) f.on = result[f.key] === 'true'
     }
-  } catch {
+  } catch (err) {
+    logger.warn('admin:system-load-flags', err)
     toast('加载功能开关失败，请重试', 'warn')
   }
 }
@@ -68,7 +70,8 @@ async function loadKv() {
     for (const item of kvConfig.value) {
       if (item.key in result) item.val = result[item.key]
     }
-  } catch {
+  } catch (err) {
+    logger.warn('admin:system-load-kv', err)
     toast('加载应用配置失败，请重试', 'warn')
   }
 }
@@ -79,7 +82,8 @@ async function loadAudit() {
   try {
     auditLog.value = await auditLogAdminApi.list(50)
     auditLoaded = true
-  } catch {
+  } catch (err) {
+    logger.warn('admin:system-load-audit', err)
     toast('操作失败，请重试', 'warn')
   } finally {
     loadingAudit.value = false
@@ -104,7 +108,8 @@ async function toggleFlag(f: FlagItem) {
     await configAdminApi.setFlag(f.key, next)
     f.on = next
     toast(`${f.on ? '已启用：' : '已禁用：'}${f.label}`)
-  } catch {
+  } catch (err) {
+    logger.warn('admin:system-toggle-flag', err)
     toast('操作失败，请重试', 'warn')
   }
 }
@@ -119,7 +124,8 @@ async function saveKv() {
     if (idx > -1) kvConfig.value[idx].val = editingKv.value.val
     showKvModal.value = false
     toast(`配置已更新：${editingKv.value.key}`)
-  } catch {
+  } catch (err) {
+    logger.warn('admin:system-save-kv', err)
     toast('操作失败，请重试', 'warn')
   }
 }

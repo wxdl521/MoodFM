@@ -112,6 +112,7 @@ import { useAuthStore } from '@/stores/auth'
 import { userApi } from '@/api/user'
 import { historyApi } from '@/api/history'
 import type { MoodPreset, Theme } from '@/types'
+import { logger } from '@/utils/logger'
 
 const router = useRouter()
 const uiStore = useUiStore()
@@ -269,7 +270,9 @@ function savePreferences() {
     const crossfade = audioGroup?.items.find(i => i.l === '交叉渐变时长')?.sliderValue ?? 4
     try {
       await userApi.updatePreferences({ autoPlay, crossfadeDuration: crossfade, theme: uiStore.theme })
-    } catch {
+    } catch (err) {
+      // 用户主动操作：偏好保存失败，本页无 toast 组件，先 logger 记录
+      logger.warn('settings:save-preferences', err)
     }
   }, 600)
 }
@@ -286,7 +289,9 @@ onMounted(async () => {
       const crossfadeItem = audioGroup?.items.find(i => i.l === '交叉渐变时长')
       if (crossfadeItem) crossfadeItem.sliderValue = prefs.crossfadeDuration ?? 4
     }
-  } catch {
+  } catch (err) {
+    // silent: 偏好加载失败时回退默认值
+    logger.warn('settings:load-preferences', err)
   }
 })
 </script>

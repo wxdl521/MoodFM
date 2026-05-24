@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import '@/assets/styles/admin.css'
 import { notificationsAdminApi, AdminNotification } from '@/api/admin'
+import { logger } from '@/utils/logger'
 
 const tab = ref<'compose' | 'history'>('compose')
 const sending = ref(false)
@@ -75,7 +76,8 @@ async function sendNotif() {
     sending.value = false
     toast(scheduleNow ? '通知已发送' : '通知已排期')
     tab.value = 'history'
-  } catch {
+  } catch (err) {
+    logger.warn('admin:notif-send', err)
     toast('操作失败，请稍后重试', 'warn')
     sending.value = false
   }
@@ -92,7 +94,8 @@ async function saveDraft() {
     })
     history.value = await notificationsAdminApi.list()
     toast('已保存为草稿')
-  } catch {
+  } catch (err) {
+    logger.warn('admin:notif-draft', err)
     toast('保存失败，请稍后重试', 'warn')
   }
 }
@@ -102,7 +105,8 @@ async function deleteNotif(id: number) {
   try {
     await notificationsAdminApi.remove(id)
     toast('已删除')
-  } catch {
+  } catch (err) {
+    logger.warn('admin:notif-delete', err)
     toast('删除失败，请稍后重试', 'warn')
     history.value = await notificationsAdminApi.list()
   }

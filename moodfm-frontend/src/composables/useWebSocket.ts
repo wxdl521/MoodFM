@@ -2,6 +2,7 @@ import { onUnmounted } from 'vue'
 import { Client, type IMessage } from '@stomp/stompjs'
 import { usePlayerStore } from '@/stores/player'
 import type { Song } from '@/types'
+import { logger } from '@/utils/logger'
 
 export function useWebSocket() {
   const playerStore = usePlayerStore()
@@ -37,8 +38,9 @@ export function useWebSocket() {
               } else if (payload && typeof payload === 'object' && 'id' in payload) {
                 playerStore.addToQueue([payload as Song])
               }
-            } catch {
-              // Ignore malformed frames
+            } catch (err) {
+              // silent: 服务器偶发畸形帧无需骚扰用户
+              logger.warn('ws:malformed-frame', err)
             }
           },
         )

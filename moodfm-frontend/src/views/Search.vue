@@ -100,6 +100,7 @@ import { searchApi } from '@/api/search'
 import { radioApi } from '@/api/radio'
 import type { SearchMode } from '@/api/search'
 import type { SongVO, Song } from '@/types'
+import { logger } from '@/utils/logger'
 
 const router = useRouter()
 const player = usePlayerStore()
@@ -233,8 +234,9 @@ async function playSong(song: SongVO, index: number) {
       try {
         const url = await radioApi.getSongUrl(song.platform, song.platformSongId)
         if (url) mapped.audioUrl = url
-      } catch {
-        // proceed without URL; Player handles missing audioUrl gracefully
+      } catch (err) {
+        // silent: 获取播放 URL 失败时跳到 Player，由播放页统一处理「无法播放」UI
+        logger.warn('search:get-song-url', err)
       }
     }
 

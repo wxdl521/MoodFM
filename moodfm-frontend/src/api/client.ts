@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { logger } from '@/utils/logger';
 
 const api = axios.create({
   baseURL: '/api',
@@ -78,7 +79,9 @@ api.interceptors.response.use(
         processQueue(newAccessToken);
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
         return api(originalRequest);
-      } catch {
+      } catch (refreshErr) {
+        // silent: refresh 失败必然走重定向到 /auth，用户会看到登录页，无需 toast
+        logger.warn('api:token-refresh', refreshErr);
         processQueue(null);
         clearAuthAndRedirect();
         return Promise.reject(err.response?.data || err);

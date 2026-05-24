@@ -317,6 +317,7 @@ import { songApi, type LyricLine } from '@/api/song'
 import { radioApi } from '@/api/radio'
 import { playlistApi } from '@/api/playlist'
 import api from '@/api/client'
+import { logger } from '@/utils/logger'
 
 const router = useRouter()
 const player = usePlayerStore()
@@ -366,7 +367,8 @@ watch(() => player.volume, (newVol) => {
         sessionId: Number(sid),
         songId: Number(song.id),
         eventType: 'volume_up',
-      }).catch(() => {})
+        // silent: feedback 上报失败不影响播放
+      }).catch(err => { logger.warn('player:feedback-volume', err) })
     }
   }
   prevVolume = newVol
@@ -446,7 +448,9 @@ async function loadLyrics() {
   try {
     const lines = await songApi.lyrics(song.id)
     lyricsLines.value = Array.isArray(lines) ? lines.filter(l => l.text?.trim()) : []
-  } catch {
+  } catch (err) {
+    // silent: 歌词获取失败时显示「暂无歌词」就够了，不弹 toast
+    logger.warn('player:lyrics-load', err)
     lyricsLines.value = []
   } finally {
     lyricsLoading.value = false
@@ -465,8 +469,9 @@ watch(() => player.currentSong?.id, async (songId) => {
     try {
       const res = await playlistApi.isLiked(songId)
       liked.value = res.liked
-    } catch {
-      // silent — liked state defaults to false on error
+    } catch (err) {
+      // silent: liked 状态查询失败时默认 false，不阻塞用户播放体验
+      logger.warn('player:is-liked', err)
     }
   }
 }, { immediate: true })
@@ -487,7 +492,10 @@ function handlePlayPause() {
       if (audio.isReady.value) {
         audio.play()
       } else {
-        audio.load(player.currentSong.audioUrl).then(() => audio.play()).catch(() => {})
+        audio.load(player.currentSong.audioUrl).then(() => audio.play()).catch(err => {
+          logger.warn('player:audio-load-playpause', err)
+          showInfoToast('该歌曲无法播放')
+        })
       }
     } else if (player.queue.length > 0) {
       _advanceQueue()
@@ -505,7 +513,8 @@ function _advanceQueue() {
   if (song?.audioUrl) {
     audio.load(song.audioUrl)
       .then(() => audio.play())
-      .catch(() => {
+      .catch(err => {
+        logger.warn('player:audio-load-advance', err)
         const failedTitle = song?.title
         if (failedTitle) showInfoToast(`「${failedTitle}」无法播放，已跳过`)
         else showInfoToast('该歌曲无法播放，已跳过')
@@ -535,7 +544,8 @@ function _sendSkipFeedback(song: typeof player.currentSong, sid: string | null, 
     playedSeconds: playedSecs,
     totalSeconds: totalSecs,
     platform: song.platform || 'netease',
-  }).catch(() => {})
+    // silent: feedback 上报失败不影响播放
+  }).catch(err => { logger.warn('player:feedback-skip', err) })
 }
 
 function handleNext() {
@@ -551,7 +561,11 @@ function handlePrev() {
   player.prev()
   const song = player.currentSong
   if (song?.audioUrl) {
-    audio.load(song.audioUrl).then(() => audio.play()).catch(() => {})
+    audio.load(song.audioUrl).then(() => audio.play()).catch(err => {
+      logger.warn('player:audio-load-prev', err)
+      const failedTitle = song?.title
+      showInfoToast(failedTitle ? `「${failedTitle}」无法播放` : '该歌曲无法播放')
+    })
   }
 }
 
@@ -575,7 +589,11 @@ function handleSkip() {
   }
 
   if (consecutiveSkips.value >= 3) {
-    blacklistApi.add({ type: 'artist', value: skippedArtist, label: skippedArtist }).catch(() => {})
+    blacklistApi.add({ type: 'artist', value: skippedArtist, label: skippedArtist }).catch(err => {
+      // 用户主动操作：连续跳过 3 次自动拉黑失败需提示
+      logger.warn('player:auto-blacklist-add', err)
+      showInfoToast('自动拉黑失败，请稍后重试')
+    })
     blacklistToast.value = skippedArtist
     consecutiveSkips.value = 0
     lastSkippedArtist.value = null
@@ -589,8 +607,10 @@ async function toggleLike() {
   try {
     const res = await playlistApi.toggleLike(song.id)
     liked.value = res.liked
-  } catch {
-    // silent — don't block playback on like errors
+  } catch (err) {
+    // 用户主动操作：红心切换失败需要提示
+    logger.warn('player:toggle-like', err)
+    showInfoToast('操作失败，请稍后重试')
   }
 }
 
@@ -600,8 +620,10 @@ async function handleDislike() {
   if (song && sid) {
     try {
       await radioApi.feedback({ songId: song.id, sessionId: sid, eventType: 'dislike' })
-    } catch {
-      // silent — don't block playback on feedback errors
+    } catch (err) {
+      // silent: dislike 是用户操作，但即使 feedback 失败也仍然要 handleNext
+      // 体验上跳过下一首已经是用户期望，不再额外弹 toast 干扰
+      logger.warn('player:feedback-dislike', err)
     }
   }
   handleNext()
@@ -647,7 +669,9 @@ async function handleShare() {
       document.body.removeChild(ta)
       showInfoToast(ok ? '链接已复制' : '复制失败，请手动复制')
     }
-  } catch {
+  } catch (err) {
+    // 用户主动分享：复制失败已有 toast，再加 logger 方便调试
+    logger.warn('player:share-clipboard', err)
     showInfoToast('复制失败，请手动复制')
   }
 }
@@ -738,7 +762,8 @@ onMounted(() => {
     if (audio.loadedUrl.value !== player.currentSong.audioUrl) {
       audio.load(player.currentSong.audioUrl)
         .then(() => audio.play())
-        .catch(() => {
+        .catch(err => {
+          logger.warn('player:audio-load-mount', err)
           // URL failed (CORS / expired / no VIP) — skip to next song
           const failedTitle = player.currentSong?.title
           if (player.queue.length > 0) {

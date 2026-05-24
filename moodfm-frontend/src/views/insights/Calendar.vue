@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import { insightsApi } from '@/api/insights'
+import { logger } from '@/utils/logger'
 
 const MOOD_PALETTE: Record<string, [string, string]> = {
   calm:       ['#a8d8c0', '#2e9e72'],   // mint green — 平静
@@ -96,7 +97,9 @@ async function loadDayDetail(day: number) {
       a: s.artist ?? '—',
       m: s.durationFormatted ?? `${s.playCount}×`,
     }))
-  } catch {
+  } catch (err) {
+    // silent: 单日详情加载失败时展示空列表即可
+    logger.warn('insights:calendar-day-detail', err)
     topTracks.value = []
   }
 }
@@ -132,7 +135,9 @@ async function loadMonth() {
       if (days.value[0] && !days.value[0].empty) await loadDayDetail(1)
       else topTracks.value = []
     }
-  } catch {
+  } catch (err) {
+    // silent: 月数据加载失败时展示空网格
+    logger.warn('insights:calendar-month', err)
     days.value = buildGrid([])
   } finally {
     loading.value = false

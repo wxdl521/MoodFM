@@ -195,6 +195,7 @@ import MoodBlob from '@/components/common/MoodBlob.vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import MoodWheel from './MoodWheel.vue'
 import type { RadioSession } from '@/types'
+import { logger } from '@/utils/logger'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -337,7 +338,8 @@ async function handleStartRadio() {
   try {
     await radio.startRadio({ moodText: text, scene, durationMinutes: sessionDuration.value === 0 ? null : sessionDuration.value })
     router.push('/player')
-  } catch {
+  } catch (err) {
+    logger.warn('home:startRadio', err)
     showError('调台失败 · 请检查网络或稍后重试')
   }
 }
@@ -348,7 +350,8 @@ async function handleRecommendPlay() {
   try {
     await radio.startRadio({ moodText: text, durationMinutes: sessionDuration.value === 0 ? null : sessionDuration.value })
     router.push('/player')
-  } catch {
+  } catch (err) {
+    logger.warn('home:recommendPlay', err)
     showError('调台失败 · 请检查网络或稍后重试')
   }
 }
@@ -358,7 +361,8 @@ async function handleJustPlay() {
   try {
     await radio.startRadio({ moodText: '随机', durationMinutes: sessionDuration.value === 0 ? null : sessionDuration.value })
     router.push('/player')
-  } catch {
+  } catch (err) {
+    logger.warn('home:justPlay', err)
     showError('调台失败 · 请检查网络或稍后重试')
   }
 }
@@ -373,7 +377,8 @@ async function resumeSession(session: RadioSession) {
       durationMinutes: sessionDuration.value === 0 ? null : sessionDuration.value,
     })
     router.push('/player')
-  } catch {
+  } catch (err) {
+    logger.warn('home:resumeSession', err)
     showError('继续电台失败 · 请检查网络或稍后重试')
   }
 }
@@ -399,7 +404,9 @@ function formatSessionDate(isoStr: string): string {
   try {
     const d = new Date(isoStr)
     return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-  } catch {
+  } catch (err) {
+    // silent: 时间格式化失败仅意味着展示空串
+    logger.warn('home:format-session-date', err)
     return ''
   }
 }
@@ -428,8 +435,9 @@ const recommendSubtitle = computed(() => {
 onMounted(async () => {
   try {
     await radio.fetchRecentSessions()
-  } catch {
-    // no-op in dev
+  } catch (err) {
+    // silent: 最近会话加载失败时静默回退到 placeholder
+    logger.warn('home:fetch-recent-sessions', err)
   }
 })
 </script>

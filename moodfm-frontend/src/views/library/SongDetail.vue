@@ -119,6 +119,7 @@ import { radioApi } from '@/api/radio'
 import { usePlayerStore } from '@/stores/player'
 import { useRadioStore } from '@/stores/radio'
 import type { Song } from '@/types'
+import { logger } from '@/utils/logger'
 
 const route = useRoute()
 const router = useRouter()
@@ -163,7 +164,10 @@ async function toggleLike() {
   try {
     await playlistApi.toggleLike(song.value.id)
     liked.value = !liked.value
-  } catch {}
+  } catch (err) {
+    // 用户主动操作：红心切换失败，本页无 toast 组件，先 logger 记录
+    logger.warn('lib:song-detail-toggle-like', err)
+  }
 }
 
 async function startRadioFromSong() {
@@ -194,7 +198,10 @@ async function addToBlacklist() {
       value: song.value.id,
       label: song.value.title,
     })
-  } catch {}
+  } catch (err) {
+    // 用户主动操作：加入黑名单失败，本页无 toast 组件，先 logger 记录
+    logger.warn('lib:song-detail-blacklist-add', err)
+  }
 }
 
 onMounted(async () => {

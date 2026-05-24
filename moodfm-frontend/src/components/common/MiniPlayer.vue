@@ -52,6 +52,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import MoodBlob from './MoodBlob.vue'
 import api from '@/api/client'
+import { logger } from '@/utils/logger'
 
 const router = useRouter()
 const playerStore = usePlayerStore()
@@ -82,7 +83,11 @@ function handleNext() {
   if (song?.audioUrl) {
     audioPlayer.load(song.audioUrl)
       .then(() => audioPlayer.play())
-      .catch(() => { if (playerStore.queue.length > 0) handleNext() })
+      .catch(err => {
+        // silent: 单曲加载失败时自动跳到下一首是预期行为，无 toast 以免连续弹窗
+        logger.warn('miniplayer:audio-load-next', err)
+        if (playerStore.queue.length > 0) handleNext()
+      })
   } else {
     audioPlayer.stop()
   }
@@ -94,7 +99,8 @@ function handleNext() {
       playedSeconds: playedSecs,
       totalSeconds: totalSecs,
       platform: prevSong.platform || 'netease',
-    }).catch(() => {})
+      // silent: feedback 上报失败不影响播放
+    }).catch(err => { logger.warn('miniplayer:feedback-skip', err) })
   }
 }
 
@@ -104,7 +110,8 @@ function handlePrev() {
   if (song?.audioUrl) {
     audioPlayer.load(song.audioUrl)
       .then(() => audioPlayer.play())
-      .catch(() => {})
+      // silent: 上一首加载失败不弹 toast（与下一首逻辑对称，避免连环弹窗）
+      .catch(err => { logger.warn('miniplayer:audio-load-prev', err) })
   } else {
     audioPlayer.stop()
   }

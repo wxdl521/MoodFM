@@ -63,6 +63,7 @@ import { ref, onMounted } from 'vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import LibraryStateView from '@/components/common/LibraryStateView.vue'
 import { blacklistApi } from '@/api/blacklist'
+import { logger } from '@/utils/logger'
 
 interface BlacklistItem {
   id: string
@@ -89,7 +90,10 @@ async function removeItem(item: BlacklistItem) {
   try {
     await blacklistApi.remove(item.id)
     items.value = items.value.filter(i => i.id !== item.id)
-  } catch {}
+  } catch (err) {
+    // 用户主动操作：移除黑名单失败，本页无 toast 组件，先 logger 记录
+    logger.warn('lib:blacklist-remove', err)
+  }
   removingId.value = null
 }
 

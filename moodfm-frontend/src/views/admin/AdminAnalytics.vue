@@ -7,6 +7,7 @@ import { GridComponent, TooltipComponent, LegendComponent, RadarComponent } from
 import { CanvasRenderer } from 'echarts/renderers'
 import '@/assets/styles/admin.css'
 import { analyticsAdminApi, type GenreCount, type PlatformCount, type TopSong, type MoodDist } from '@/api/admin'
+import { logger } from '@/utils/logger'
 
 use([LineChart, BarChart, PieChart, RadarChart, GridComponent, TooltipComponent, LegendComponent, RadarComponent, CanvasRenderer])
 
@@ -42,7 +43,8 @@ async function loadAll(days: number) {
     platformData.value = platform
     topSongs.value     = songs
     moodDist.value     = mood
-  } catch {
+  } catch (err) {
+    logger.warn('admin:analytics-load', err)
     toast('数据加载失败', 'warn')
   } finally {
     loading.value = false

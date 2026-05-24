@@ -2,6 +2,7 @@
 import { ref, onMounted, watch } from 'vue'
 import '@/assets/styles/admin.css'
 import { aiConfigAdminApi, sceneAdminApi, SceneTemplate } from '@/api/admin'
+import { logger } from '@/utils/logger'
 
 interface WeightItem { key: string; label: string; desc: string; val: number; min: number; max: number }
 
@@ -49,7 +50,8 @@ async function loadScenes() {
   loadingScenes.value = true
   try {
     scenes.value = await sceneAdminApi.list()
-  } catch {
+  } catch (err) {
+    logger.warn('admin:ai-engine-load-scenes', err)
     toast('场景加载失败', 'warn')
   } finally {
     loadingScenes.value = false
@@ -64,8 +66,9 @@ onMounted(async () => {
     ])
     weights.value.forEach(w => { w.val = Number(weightResult[w.key]) || DEFAULTS[w.key] })
     promptTemplate.value = promptResult.prompt
-  } catch {
-    // keep defaults silently
+  } catch (err) {
+    // silent: 配置加载失败时回退默认值
+    logger.warn('admin:ai-engine-load-config', err)
   }
 })
 
@@ -83,7 +86,8 @@ async function saveWeights() {
     toast('权重配置已保存')
     saved.value = true
     setTimeout(() => { saved.value = false }, 2000)
-  } catch {
+  } catch (err) {
+    logger.warn('admin:ai-engine-save-weights', err)
     toast('保存失败，请重试', 'warn')
   }
 }
@@ -95,7 +99,8 @@ async function resetWeights() {
   try {
     await aiConfigAdminApi.saveWeights(defaultRecord)
     toast('已重置为默认值', 'info')
-  } catch {
+  } catch (err) {
+    logger.warn('admin:ai-engine-reset-weights', err)
     toast('重置失败，请重试', 'warn')
   }
 }
@@ -106,7 +111,8 @@ async function toggleScene(scene: SceneTemplate) {
     await sceneAdminApi.update(scene.id, { active: next })
     scene.active = next
     toast(`${next ? '已启用' : '已禁用'} · ${scene.name}`)
-  } catch {
+  } catch (err) {
+    logger.warn('admin:ai-engine-toggle-scene', err)
     toast('操作失败，请重试', 'warn')
   }
 }
@@ -128,7 +134,8 @@ async function saveScene() {
     if (idx > -1) scenes.value[idx] = { ...editingScene.value }
     showSceneModal.value = false
     toast('场景已更新')
-  } catch {
+  } catch (err) {
+    logger.warn('admin:ai-engine-save-scene', err)
     toast('保存失败，请重试', 'warn')
   }
 }
@@ -148,7 +155,8 @@ async function submitNewScene() {
     scenes.value.push(created)
     showNewModal.value = false
     toast('场景已创建')
-  } catch {
+  } catch (err) {
+    logger.warn('admin:ai-engine-create-scene', err)
     toast('创建失败，请重试', 'warn')
   }
 }
@@ -157,7 +165,8 @@ async function savePrompt() {
   try {
     await aiConfigAdminApi.savePrompt(promptTemplate.value)
     toast('Prompt 模板已保存')
-  } catch {
+  } catch (err) {
+    logger.warn('admin:ai-engine-save-prompt', err)
     toast('保存失败，请重试', 'warn')
   }
 }

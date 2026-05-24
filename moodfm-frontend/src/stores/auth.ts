@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi } from '@/api/auth'
 import type { User } from '@/types'
+import { logger } from '@/utils/logger'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('moodfm_token'))
@@ -9,7 +10,11 @@ export const useAuthStore = defineStore('auth', () => {
     (() => {
       const raw = localStorage.getItem('moodfm_user')
       let parsed = null
-      try { parsed = raw ? JSON.parse(raw) : null } catch { parsed = null }
+      try { parsed = raw ? JSON.parse(raw) : null } catch (err) {
+        // silent: localStorage 数据损坏时静默回退 null
+        logger.warn('auth:parse-user-cache', err)
+        parsed = null
+      }
       return parsed
     })()
   )
@@ -37,8 +42,9 @@ export const useAuthStore = defineStore('auth', () => {
       if (token.value) {
         await authApi.logout(token.value)
       }
-    } catch {
-      // Ignore errors — still clear local state
+    } catch (err) {
+      // silent: 登出请求失败也无妨，仍然清空本地状态走到 /auth
+      logger.warn('auth:logout-api', err)
     }
     token.value = null
     user.value = null
@@ -59,7 +65,9 @@ export const useAuthStore = defineStore('auth', () => {
     if (!token.value) return
     try {
       await fetchMe()
-    } catch {
+    } catch (err) {
+      // silent: token 失效后会走 logout 重定向到 /auth，用户能看到登录界面
+      logger.warn('auth:validate', err)
       logout()
     }
   }

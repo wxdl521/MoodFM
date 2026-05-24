@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import '@/assets/styles/admin.css'
 import { platformAdminApi, type CookieExpiryRow } from '@/api/admin'
+import { logger } from '@/utils/logger'
 
 interface Endpoint { name: string; status: 'ok' | 'warn'; latency: string }
 interface Platform {
@@ -75,7 +76,8 @@ onMounted(async () => {
       if (s) { p.bound = s.bound; p.expiring = s.expiring; p.expired = s.expired }
     }
     cookieTable.value = expiry
-  } catch {
+  } catch (err) {
+    logger.warn('admin:platforms-load', err)
     toast('平台数据加载失败', 'warn')
   } finally {
     loadingStats.value = false

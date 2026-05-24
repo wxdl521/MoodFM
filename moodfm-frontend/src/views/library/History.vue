@@ -5,6 +5,7 @@ import { usePlayerStore } from '@/stores/player'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import LibraryStateView from '@/components/common/LibraryStateView.vue'
 import { historyApi } from '@/api/history'
+import { logger } from '@/utils/logger'
 
 const router = useRouter()
 const player = usePlayerStore()
@@ -127,7 +128,9 @@ async function loadMore() {
   page.value++
   try {
     await loadPage(page.value, true)
-  } catch {
+  } catch (err) {
+    // silent: 加载下一页失败时静默回滚页码，让用户可以重试滚动
+    logger.warn('history:load-more', err)
     page.value--
   } finally {
     loadingMore.value = false

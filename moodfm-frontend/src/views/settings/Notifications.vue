@@ -89,6 +89,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import { userApi } from '@/api/user'
+import { logger } from '@/utils/logger'
 
 const loading = ref(true)
 
@@ -138,8 +139,9 @@ function save() {
         weeklyReportDay: settings.weeklyReportDay,
         weeklyReportHour: settings.weeklyReportHour,
       })
-    } catch {
-      // silent
+    } catch (err) {
+      // 用户主动操作：通知设置保存失败，本页无 toast 组件，先 logger 记录
+      logger.warn('settings:notifications-save', err)
     }
   }, 400)
 }
@@ -154,8 +156,9 @@ onMounted(async () => {
       settings.weeklyReportDay = res.weeklyReportDay ?? 0
       settings.weeklyReportHour = res.weeklyReportHour ?? 9
     }
-  } catch {
-    // use defaults
+  } catch (err) {
+    // silent: 通知设置加载失败时回退到默认值
+    logger.warn('settings:notifications-load', err)
   } finally {
     loading.value = false
   }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import api from '@/api/client'
+import { logger } from '@/utils/logger'
 
 interface AdminUser {
   id: number
@@ -62,7 +63,8 @@ async function toggleBan(u: AdminUser) {
     await api.put(`/admin/users/${u.id}/status`, { status: newStatus })
     u.status = newStatus
     toast(newStatus === 0 ? `已封禁用户：${u.username}` : `已解禁用户：${u.username}`, newStatus === 0 ? 'warn' : 'ok')
-  } catch {
+  } catch (err) {
+    logger.warn('admin:users-toggle-ban', err)
     toast('操作失败', 'danger')
   }
 }
@@ -76,7 +78,8 @@ onMounted(async () => {
   try {
     const data = await api.get('/admin/users?page=1&pageSize=200')
     allUsers.value = Array.isArray(data) ? data : []
-  } catch {
+  } catch (err) {
+    logger.warn('admin:users-load', err)
     toast('加载用户数据失败', 'danger')
   } finally {
     loading.value = false
