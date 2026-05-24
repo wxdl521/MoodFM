@@ -229,3 +229,20 @@ textarea.field {
   line-height: 1.5;
   height: auto;
 }
+
+/* ── Reduced Motion ──
+   Respect the user's OS-level "reduce motion" preference: collapse decorative
+   animations (drift / pulse-ring / blob morph / page slide transitions) to a
+   near-zero duration while keeping functional transitions (hover color, focus
+   ring) intact. We don't use `animation: none` so animationend listeners still
+   fire. Standard pattern, see web.dev/prefers-reduced-motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
