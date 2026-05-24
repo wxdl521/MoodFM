@@ -170,6 +170,7 @@
             class="recent-card recent-card--placeholder"
             :data-mood="p.mood"
           >
+            <span class="recent-card__sample-tag">示例 · SAMPLE</span>
             <MoodBlob :size="260" :drift="false" geometry="blob" style="margin-bottom: 10px; pointer-events: none" />
             <div class="meta">{{ p.tag }}</div>
             <div style="font-family: var(--serif-cn); font-size: 18px; font-weight: 500; margin-top: 4px">{{ p.title }}</div>
@@ -711,6 +712,7 @@ onMounted(async () => {
 }
 
 .recent-card {
+  position: relative;
   border: 1px solid var(--rule);
   border-radius: 16px;
   padding: 14px;
@@ -736,6 +738,23 @@ onMounted(async () => {
 .recent-card--placeholder:hover {
   border-color: var(--rule);
   transform: none;
+  box-shadow: none;
+}
+
+.recent-card__sample-tag {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+  padding: 2px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--paper);
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+  pointer-events: none;
 }
 
 /* ── Duration selector ─────────────────────────────────────────────── */
