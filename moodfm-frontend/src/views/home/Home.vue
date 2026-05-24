@@ -28,6 +28,7 @@
               class="field"
               placeholder="此刻你在哪里、心里是什么颜色？比如：加班到很晚，需要一点不打扰我的电流声…"
               rows="4"
+              @input="onTextInput"
             />
             <button
               class="btn btn-inline"
@@ -88,7 +89,7 @@
         <!-- Mood compass (SVG-based) -->
         <div class="meta" style="margin-bottom: 12px">方式 C · MOOD COMPASS · 心情色盘</div>
         <div class="mood-wheel-wrap">
-          <MoodWheel :size="340" @change="onWheelChange" />
+          <MoodWheel ref="moodWheelRef" :size="340" @change="onWheelChange" />
         </div>
         <div class="meta" style="text-align: center; margin-top: 14px; color: var(--ink-2)">
           DRAG · 拖动球点选择此刻的心情坐标
@@ -215,7 +216,41 @@ const moodInput = ref('')
 const selectedScene = ref('')
 const sessionDuration = ref(30)
 
+// Generated text from the MoodWheel (kept separate from `moodInput` so the
+// three input methods can be mutually exclusive).
+const wheelMoodText = ref('')
+
+// Track which input source the user most recently used. Only that source's
+// value will be sent to the backend; switching sources clears the others.
+const lastInputSource = ref<'text' | 'scene' | 'wheel' | null>(null)
+
+// Ref to the MoodWheel component so we can reset its dot position.
+const moodWheelRef = ref<InstanceType<typeof MoodWheel> | null>(null)
+
 const scenes = ['通勤', '学习', '跑步', '写作', '睡前', '派对', '深夜']
+
+// ── Input-source mux ────────────────────────────────────────────────────────
+function clearText() {
+  moodInput.value = ''
+}
+function clearScene() {
+  selectedScene.value = ''
+  radio.setScene('')
+}
+function clearWheel() {
+  wheelMoodText.value = ''
+  moodWheelRef.value?.reset()
+}
+
+function onTextInput() {
+  // Only treat as a fresh "text" input when the textarea actually has content.
+  // Deleting back to empty should NOT clobber a previously-chosen scene/wheel.
+  if (!moodInput.value.trim()) return
+  if (lastInputSource.value === 'text') return
+  lastInputSource.value = 'text'
+  clearScene()
+  clearWheel()
+}
 
 // ── Error toast ─────────────────────────────────────────────────────────────
 const errorToast = ref<string | null>(null)
@@ -235,14 +270,36 @@ const durationOptions = [
 ]
 
 function handleSceneSelect(scene: string) {
-  selectedScene.value = scene === selectedScene.value ? '' : scene
-  radio.setScene(selectedScene.value)
+  const toggled = scene === selectedScene.value ? '' : scene
+  selectedScene.value = toggled
+  radio.setScene(toggled)
+  if (toggled) {
+    lastInputSource.value = 'scene'
+    clearText()
+    clearWheel()
+  } else if (lastInputSource.value === 'scene') {
+    // User toggled the scene back off → nothing is selected anymore.
+    lastInputSource.value = null
+  }
 }
 
 // ── MoodWheel callback ──────────────────────────────────────────────────────
 function onWheelChange(x: number, y: number) {
+  // Any wheel drag counts as choosing the "wheel" source — switching away
+  // from text/scene even if the user landed near centre.
+  if (lastInputSource.value !== 'wheel') {
+    lastInputSource.value = 'wheel'
+    clearText()
+    clearScene()
+  }
+
   const dist = Math.hypot(x, y)
-  if (dist < 0.12) return  // near centre — don't override
+  if (dist < 0.12) {
+    // Near-centre → no strong mood signal, leave wheelMoodText empty so that
+    // submission falls back to the generic '随机' value.
+    wheelMoodText.value = ''
+    return
+  }
 
   let text = ''
   const warm = x       // +1=warm/energetic  -1=cool/calm
@@ -258,15 +315,27 @@ function onWheelChange(x: number, y: number) {
   else if (warm < -0.4)                    text = '心境清淡，想要简单不复杂的音乐'
   else                                     text = '心情平平，随便来点什么吧'
 
-  moodInput.value = text
+  wheelMoodText.value = text
 }
 
 // ── Radio actions ───────────────────────────────────────────────────────────
 async function handleStartRadio() {
-  const text = moodInput.value.trim() || selectedScene.value || '随机'
+  // Only the most recently used input source contributes to the request —
+  // the other two have already been visually cleared.
+  let text = ''
+  let scene: string | undefined
+  if (lastInputSource.value === 'text') {
+    text = moodInput.value.trim()
+  } else if (lastInputSource.value === 'scene') {
+    text = selectedScene.value
+    scene = selectedScene.value || undefined
+  } else if (lastInputSource.value === 'wheel') {
+    text = wheelMoodText.value
+  }
+  if (!text) text = '随机'
   radio.setMoodText(text)
   try {
-    await radio.startRadio({ moodText: text, scene: selectedScene.value || undefined, durationMinutes: sessionDuration.value === 0 ? null : sessionDuration.value })
+    await radio.startRadio({ moodText: text, scene, durationMinutes: sessionDuration.value === 0 ? null : sessionDuration.value })
     router.push('/player')
   } catch {
     showError('调台失败 · 请检查网络或稍后重试')

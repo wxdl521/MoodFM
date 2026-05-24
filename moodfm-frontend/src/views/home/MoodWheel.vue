@@ -59,8 +59,19 @@ const r  = computed(() => props.size / 2 - 2)
 const dotR = computed(() => Math.max(10, props.size * 0.038))
 
 // Dot position (normalised -1..1, starts slightly off-centre)
-const dotNX = ref(0.18)
-const dotNY = ref(-0.25)
+const INITIAL_NX = 0.18
+const INITIAL_NY = -0.25
+const dotNX = ref(INITIAL_NX)
+const dotNY = ref(INITIAL_NY)
+
+// Expose a reset() method so the parent can put the dot back to its initial
+// position when another input source (text / scene) takes over.
+function reset() {
+  dotNX.value = INITIAL_NX
+  dotNY.value = INITIAL_NY
+}
+
+defineExpose({ reset })
 
 const dotX = computed(() => cx.value + dotNX.value * r.value)
 const dotY = computed(() => cy.value + dotNY.value * r.value)
