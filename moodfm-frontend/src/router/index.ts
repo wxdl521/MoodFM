@@ -8,6 +8,7 @@ declare module 'vue-router' {
     depth?: number
     order?: number
     showNav?: boolean
+    hideMiniPlayer?: boolean
   }
 }
 
@@ -24,16 +25,16 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     // ── Depth 0: Auth flow ────────────────────────────────────────────
-    { path: '/',           component: () => import('@/views/Landing.vue'),        meta: { depth: DEPTH.AUTH, order: 0 } },
-    { path: '/auth',       component: () => import('@/views/auth/Auth.vue'),      meta: { depth: DEPTH.AUTH, order: 1 } },
-    { path: '/onboarding', component: () => import('@/views/Onboarding.vue'),     meta: { requiresAuth: true, depth: DEPTH.AUTH, order: 2 } },
+    { path: '/',           component: () => import('@/views/Landing.vue'),        meta: { depth: DEPTH.AUTH, order: 0, hideMiniPlayer: true } },
+    { path: '/auth',       component: () => import('@/views/auth/Auth.vue'),      meta: { depth: DEPTH.AUTH, order: 1, hideMiniPlayer: true } },
+    { path: '/onboarding', component: () => import('@/views/Onboarding.vue'),     meta: { requiresAuth: true, depth: DEPTH.AUTH, order: 2, hideMiniPlayer: true } },
 
     // ── Depth 1: Main entry ───────────────────────────────────────────
     { path: '/home', component: () => import('@/views/home/Home.vue'), meta: { requiresAuth: true, depth: DEPTH.MAIN, order: 0, showNav: true } },
 
     // ── Depth 2: Main features (bottom nav order) ─────────────────────
     { path: '/search',    component: () => import('@/views/Search.vue'),               meta: { requiresAuth: true, depth: DEPTH.FEATURE, order: 0, showNav: true } },
-    { path: '/player',    component: () => import('@/views/player/Player.vue'),        meta: { requiresAuth: true, depth: DEPTH.FEATURE, order: 1 } },
+    { path: '/player',    component: () => import('@/views/player/Player.vue'),        meta: { requiresAuth: true, depth: DEPTH.FEATURE, order: 1, hideMiniPlayer: true } },
     { path: '/playlists', component: () => import('@/views/library/PlaylistList.vue'), meta: { requiresAuth: true, depth: DEPTH.FEATURE, order: 2, showNav: true } },
     { path: '/likes',     component: () => import('@/views/library/Loved.vue'),        meta: { requiresAuth: true, depth: DEPTH.FEATURE, order: 3 } },
     { path: '/history',   component: () => import('@/views/library/History.vue'),      meta: { requiresAuth: true, depth: DEPTH.FEATURE, order: 4, showNav: true } },
@@ -57,17 +58,17 @@ const router = createRouter({
     {
       path: '/admin',
       component: () => import('@/views/admin/AdminLayout.vue'),
-      meta: { requiresAuth: true, requiresAdmin: true, depth: DEPTH.ADMIN },
+      meta: { requiresAuth: true, requiresAdmin: true, depth: DEPTH.ADMIN, hideMiniPlayer: true },
       children: [
         { path: '', redirect: '/admin/dashboard' },
-        { path: 'dashboard',     component: () => import('@/views/admin/AdminDashboard.vue'),     meta: { depth: DEPTH.ADMIN } },
-        { path: 'users',         component: () => import('@/views/admin/AdminUsers.vue'),         meta: { depth: DEPTH.ADMIN } },
-        { path: 'music',         component: () => import('@/views/admin/AdminMusic.vue'),         meta: { depth: DEPTH.ADMIN } },
-        { path: 'platforms',     component: () => import('@/views/admin/AdminPlatforms.vue'),     meta: { depth: DEPTH.ADMIN } },
-        { path: 'ai',            component: () => import('@/views/admin/AdminAIEngine.vue'),      meta: { depth: DEPTH.ADMIN } },
-        { path: 'analytics',     component: () => import('@/views/admin/AdminAnalytics.vue'),     meta: { depth: DEPTH.ADMIN } },
-        { path: 'notifications', component: () => import('@/views/admin/AdminNotifications.vue'), meta: { depth: DEPTH.ADMIN } },
-        { path: 'system',        component: () => import('@/views/admin/AdminSystem.vue'),        meta: { depth: DEPTH.ADMIN } },
+        { path: 'dashboard',     component: () => import('@/views/admin/AdminDashboard.vue'),     meta: { depth: DEPTH.ADMIN, hideMiniPlayer: true } },
+        { path: 'users',         component: () => import('@/views/admin/AdminUsers.vue'),         meta: { depth: DEPTH.ADMIN, hideMiniPlayer: true } },
+        { path: 'music',         component: () => import('@/views/admin/AdminMusic.vue'),         meta: { depth: DEPTH.ADMIN, hideMiniPlayer: true } },
+        { path: 'platforms',     component: () => import('@/views/admin/AdminPlatforms.vue'),     meta: { depth: DEPTH.ADMIN, hideMiniPlayer: true } },
+        { path: 'ai',            component: () => import('@/views/admin/AdminAIEngine.vue'),      meta: { depth: DEPTH.ADMIN, hideMiniPlayer: true } },
+        { path: 'analytics',     component: () => import('@/views/admin/AdminAnalytics.vue'),     meta: { depth: DEPTH.ADMIN, hideMiniPlayer: true } },
+        { path: 'notifications', component: () => import('@/views/admin/AdminNotifications.vue'), meta: { depth: DEPTH.ADMIN, hideMiniPlayer: true } },
+        { path: 'system',        component: () => import('@/views/admin/AdminSystem.vue'),        meta: { depth: DEPTH.ADMIN, hideMiniPlayer: true } },
       ]
     },
 
@@ -77,7 +78,7 @@ const router = createRouter({
     { path: '/songs/:id', redirect: to => `/song/${to.params.id}` },
 
     // ── Fallback ──────────────────────────────────────────────────────
-    { path: '/:pathMatch(.*)*', component: () => import('@/views/ErrorPage.vue'), meta: { depth: DEPTH.AUTH } },
+    { path: '/:pathMatch(.*)*', component: () => import('@/views/ErrorPage.vue'), meta: { depth: DEPTH.AUTH, hideMiniPlayer: true } },
   ],
 })
 

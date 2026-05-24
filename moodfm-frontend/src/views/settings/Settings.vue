@@ -98,15 +98,12 @@
         </div>
       </div>
     </div>
-
-    <MiniPlayer />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import { useUiStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
 import { userApi } from '@/api/user'

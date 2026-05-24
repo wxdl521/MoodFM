@@ -80,14 +80,11 @@
         </div>
       </div>
     </div>
-
-    <MiniPlayer />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import { userApi } from '@/api/user'
 import { logger } from '@/utils/logger'
 

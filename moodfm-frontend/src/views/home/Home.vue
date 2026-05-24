@@ -180,9 +180,6 @@
       </div>
     </div>
 
-    <!-- Mini player (fixed bottom) -->
-    <MiniPlayer />
-
     <!-- Error toast -->
     <Transition name="fade">
       <div v-if="errorToast" class="error-toast">
@@ -200,7 +197,6 @@ import { useRadioStore } from '@/stores/radio'
 import { usePlayerStore } from '@/stores/player'
 import { useUiStore } from '@/stores/ui'
 import MoodBlob from '@/components/common/MoodBlob.vue'
-import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import MoodWheel from './MoodWheel.vue'
 import type { RadioSession } from '@/types'
 import { logger } from '@/utils/logger'

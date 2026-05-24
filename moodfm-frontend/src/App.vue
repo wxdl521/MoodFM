@@ -5,6 +5,9 @@
       <RouterView :key="$route.path" />
     </Transition>
 
+    <!-- Global mini player: shown on every page except auth/onboarding/player/admin (controlled by route.meta.hideMiniPlayer) -->
+    <MiniPlayer v-if="showMiniPlayer" />
+
     <!-- Global notification toasts -->
     <div v-if="notifications.length" style="position:fixed;top:80px;right:24px;z-index:200;display:flex;flex-direction:column;gap:8px;">
       <div
@@ -37,19 +40,23 @@
 </template>
 
 <script setup lang="ts">
-import { watch, onMounted } from 'vue'
+import { computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifications } from '@/composables/useNotifications'
 import { useNavDirection } from '@/composables/useNavDirection'
 import NavBar from '@/components/common/NavBar.vue'
+import MiniPlayer from '@/components/common/MiniPlayer.vue'
 
 const route = useRoute()
 const uiStore = useUiStore()
 const authStore = useAuthStore()
 const { notifications, connect, dismiss } = useNotifications()
 const { transitionName } = useNavDirection()
+
+// Global mini player visibility — opt-out via route meta
+const showMiniPlayer = computed(() => !route.meta.hideMiniPlayer)
 
 onMounted(() => { authStore.validate() })
 

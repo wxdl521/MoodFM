@@ -164,14 +164,11 @@
         </div>
       </div>
     </div>
-
-    <MiniPlayer />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import { useUserStore } from '@/stores/user'
 import { useAuthStore } from '@/stores/auth'

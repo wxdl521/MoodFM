@@ -127,15 +127,12 @@
         </div>
       </div>
     </div>
-
-    <MiniPlayer />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
-import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'

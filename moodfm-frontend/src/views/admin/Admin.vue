@@ -2,7 +2,6 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import NavBar from '@/components/common/NavBar.vue'
-import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import api from '@/api/client'
 import { logger } from '@/utils/logger'
 
@@ -135,8 +134,6 @@ onMounted(() => {
         </div>
       </div>
     </div>
-
-    <MiniPlayer />
   </div>
 </template>
 

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
-import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import { insightsApi } from '@/api/insights'
 import { logger } from '@/utils/logger'
 
@@ -308,7 +307,5 @@ onMounted(() => { loadMonth() })
         </div>
       </div>
     </div>
-
-    <MiniPlayer />
   </div>
 </template>

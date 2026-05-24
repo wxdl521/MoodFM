@@ -53,14 +53,11 @@
         </div>
       </LibraryStateView>
     </div>
-
-    <MiniPlayer />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import LibraryStateView from '@/components/common/LibraryStateView.vue'
 import { blacklistApi } from '@/api/blacklist'
 import { logger } from '@/utils/logger'

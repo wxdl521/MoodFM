@@ -85,8 +85,6 @@
         <div style="font-family:var(--serif-en);font-style:italic;font-size:28px;color:var(--ink-3)">Search.</div>
       </div>
     </div>
-
-    <MiniPlayer />
   </div>
 </template>
 
@@ -95,7 +93,6 @@ import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { usePlayerStore } from '@/stores/player'
-import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import { searchApi } from '@/api/search'
 import { radioApi } from '@/api/radio'
 import type { SearchMode } from '@/api/search'

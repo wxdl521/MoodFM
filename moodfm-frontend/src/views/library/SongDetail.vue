@@ -102,15 +102,12 @@
         </div>
       </div>
     </template>
-
-    <MiniPlayer />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import { songApi } from '@/api/song'
 import { blacklistApi } from '@/api/blacklist'

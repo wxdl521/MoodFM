@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
-import MiniPlayer from '@/components/common/MiniPlayer.vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { BarChart } from 'echarts/charts'
@@ -148,7 +147,5 @@ onMounted(async () => {
         </div>
       </div>
     </div>
-
-    <MiniPlayer />
   </div>
 </template>
