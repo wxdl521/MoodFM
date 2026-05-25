@@ -10,6 +10,7 @@ import com.moodfm.service.report.impl.WeeklyReportServiceImpl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -33,6 +34,7 @@ public class WeeklyReportScheduler {
      * 默认：周一 9 点。
      */
     @Scheduled(cron = "0 0 * * * *")
+    @SchedulerLock(name = "weeklyReport", lockAtMostFor = "PT10M", lockAtLeastFor = "PT1M")
     public void generateWeeklyReports() {
         LocalDate today = LocalDate.now();
         int currentHour = LocalTime.now().getHour();

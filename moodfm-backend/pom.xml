@@ -24,6 +24,7 @@
         <jjwt.version>0.12.6</jjwt.version>
         <springdoc.version>2.6.0</springdoc.version>
         <resilience4j.version>2.2.0</resilience4j.version>
+        <shedlock.version>5.16.0</shedlock.version>
     </properties>
 
     <dependencyManagement>
@@ -122,6 +123,18 @@
             <artifactId>jjwt-jackson</artifactId>
             <version>${jjwt.version}</version>
             <scope>runtime</scope>
+        </dependency>
+
+        <!-- ShedLock: 分布式定时任务锁，防止多实例同一 cron 被并发执行 -->
+        <dependency>
+            <groupId>net.javacrumbs.shedlock</groupId>
+            <artifactId>shedlock-spring</artifactId>
+            <version>${shedlock.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>net.javacrumbs.shedlock</groupId>
+            <artifactId>shedlock-provider-redis-spring</artifactId>
+            <version>${shedlock.version}</version>
         </dependency>
 
         <!-- Resilience4j -->
