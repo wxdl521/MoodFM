@@ -126,7 +126,30 @@ QQ 音乐的 liked/recommend/song-url 当前多为占位或不完整实现。
 ```text
 MoodFM/
 ├─ moodfm-backend/          # Spring Boot 后端
+│  └─ src/main/java/com/moodfm/
+│     ├─ MoodFmApplication.java  # 入口
+│     ├─ ai/             # Spring AI 心情解析 / 重排相关
+│     ├─ client/         # 调外部服务（音乐适配器 / LLM 等）
+│     ├─ common/         # R<T> 统一返回 / 公用工具
+│     ├─ config/         # SecurityConfig / WebMvcConfig / RateLimit / Redis
+│     ├─ controller/     # REST 控制器；admin/ 子包是后台接口
+│     ├─ domain/         # entity + dto + vo
+│     ├─ mapper/         # MyBatis-Plus Mapper 接口
+│     ├─ scheduler/      # 周报定时任务
+│     ├─ security/       # JwtAuthFilter / UserDetailsService
+│     ├─ service/        # 业务服务（PlayerService / MoodAnalysisService 等）
+│     └─ websocket/      # STOMP 反馈通道
 ├─ moodfm-frontend/         # Vue/Vite 前端
+│  └─ src/
+│     ├─ api/             # Axios 封装 + 各模块 API 声明
+│     ├─ assets/          # 静态资源、全局样式
+│     ├─ components/      # 通用 UI 组件
+│     ├─ composables/     # useAudioPlayer / useWebSocket 等
+│     ├─ router/          # 路由 + meta（depth / hideMiniPlayer 等）
+│     ├─ stores/          # Pinia store
+│     ├─ types/           # TS 类型（Song / SongVO / Window 全局增强等）
+│     ├─ utils/           # logger / platform 守卫等
+│     └─ views/           # 页面（含 admin/ 后台和 library/ 媒体库子页）
 ├─ moodfm-music-adapter/    # Node.js 音乐平台适配层
 ├─ mysql/                   # MySQL 初始化脚本
 ├─ Front-end styles/        # 样式模板 / 视觉参考
@@ -252,6 +275,52 @@ mvn test
 - 前端打开 `/`、`/auth`、`/home`、`/player`
 - 注册、登录、平台 Cookie 绑定、启动电台
 - 造播放数据后检查 `/insights`、`/calendar`、`/weekly/:id`
+
+## 开发常用命令
+
+### Maven 版本
+
+后端 `pom.xml` 是 Spring Boot 3.3.6，继承的 `maven-compiler-plugin 3.13.0` 要求 **Maven ≥ 3.6.3**。如果系统 PATH 上的 Maven 版本太低（例如 3.6.0），直接 `mvn compile` 会抛 `PluginIncompatibleException`。
+
+仓库内置 Maven 3.9.9：
+
+```bash
+# 一律用项目自带 Maven
+./.tools/apache-maven-3.9.9/bin/mvn ...
+```
+
+### 后端单测
+
+只跑某个 Service test：
+
+```bash
+cd moodfm-backend
+../.tools/apache-maven-3.9.9/bin/mvn test -Dtest=PlayerServiceImplTest
+```
+
+跑多个 test 类：
+
+```bash
+../.tools/apache-maven-3.9.9/bin/mvn test \
+  -Dtest='MoodAnalysisServiceImplTest,WeeklyReportSchedulerTest'
+```
+
+### 前端类型检查（严格）
+
+```bash
+cd moodfm-frontend
+./node_modules/.bin/vue-tsc --noEmit
+```
+
+> 注意：直接 `npx vue-tsc` 会拉到错误的 vue-tsc@3.3.1 不能用，**必须**用 `node_modules/.bin/vue-tsc`。
+
+### 前端构建产物 / lint
+
+```bash
+cd moodfm-frontend
+npm run build        # vite build + 类型检查
+npm run lint         # eslint（如有）
+```
 
 ## 开发注意事项
 
