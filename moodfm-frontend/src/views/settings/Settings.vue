@@ -108,7 +108,7 @@ import { useUiStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
 import { userApi } from '@/api/user'
 import { historyApi } from '@/api/history'
-import type { MoodPreset, Theme } from '@/types'
+import type { MoodPreset } from '@/types'
 import { logger } from '@/utils/logger'
 
 const router = useRouter()

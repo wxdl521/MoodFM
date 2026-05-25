@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import NavBar from '@/components/common/NavBar.vue'
 import api from '@/api/client'
 import { logger } from '@/utils/logger'
 
-const router = useRouter()
 const loading = ref(true)
 interface AdminUserRow {
   id: number; username: string; email: string; phone: string

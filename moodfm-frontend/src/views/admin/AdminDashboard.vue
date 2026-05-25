@@ -64,7 +64,7 @@ onMounted(async () => {
 
   // DAU 折线图
   try {
-    const activity = await api.get('/admin/dashboard/activity?days=7')
+    const activity = await api.get('/admin/dashboard/activity?days=7') as { labels?: string[]; dau?: number[] } | null
     if (activity?.labels && activity?.dau) {
       chartOption.value.xAxis.data = activity.labels
       chartOption.value.series[0].data = activity.dau

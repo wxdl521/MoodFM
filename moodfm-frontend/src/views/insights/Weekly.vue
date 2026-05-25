@@ -240,12 +240,6 @@ const weekLineOption = computed(() => ({
   }],
 }))
 
-function formatMinutes(mins: number): string {
-  const h = Math.floor(mins / 60)
-  const m = mins % 60
-  return h > 0 ? `${h}h ${m}m` : `${m}m`
-}
-
 function formatDateRange(start: string, end: string): string {
   const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
   const s = new Date(start)
@@ -329,13 +323,13 @@ onMounted(async () => {
       reportsApi.listReports().catch(err => { logger.warn('weekly:report-list', err); return [] }),
     ])
     weekOptions.value = all.map(r => ({
-      id: r.id,
-      label: r.id,
+      id: String(r.id),
+      label: String(r.id),
       range: formatDateRange(r.weekStart, r.weekEnd),
     }))
     const target = latest ?? all[0] ?? null
     if (target) {
-      currentWeekId.value = target.id
+      currentWeekId.value = String(target.id)
       applyReport(target)
     }
   } catch (e: any) {

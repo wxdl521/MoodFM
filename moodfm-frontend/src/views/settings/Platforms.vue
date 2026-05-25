@@ -133,7 +133,7 @@ async function handleUnbind(key: string) {
           <div class="row" style="gap:8px;">
             <template v-if="getBinding(p.key)">
               <button
-                v-if="!getBinding(p.key)?.isDefault"
+                v-if="!getBinding(p.key)?.default"
                 class="btn-pill"
                 style="flex:1;"
                 :disabled="pendingPlatform === p.key"

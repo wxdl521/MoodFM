@@ -15,7 +15,6 @@ use([LineChart, RadarChart, GridComponent, TooltipComponent, LegendComponent, Ca
 
 const period = ref('7天')
 const loading = ref(true)
-const error = ref<string | null>(null)
 const contentRef = ref<HTMLElement | null>(null)
 
 async function handleShare() {

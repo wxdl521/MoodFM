@@ -115,8 +115,25 @@ import { playlistApi } from '@/api/playlist'
 import { radioApi } from '@/api/radio'
 import { usePlayerStore } from '@/stores/player'
 import { useRadioStore } from '@/stores/radio'
-import type { Song } from '@/types'
+import type { Song, SongVO } from '@/types'
+import { toPlatform } from '@/utils/platform'
 import { logger } from '@/utils/logger'
+
+function voToSong(vo: SongVO): Song {
+  return {
+    id: String(vo.id ?? ''),
+    title: vo.title,
+    artist: vo.artist,
+    album: vo.album,
+    platform: toPlatform(vo.platform),
+    platformSongId: vo.platformSongId ?? '',
+    duration: vo.durationSeconds ?? 0,
+    coverUrl: vo.coverUrl,
+    audioUrl: vo.playUrl ?? undefined,
+    recommendReason: vo.recommendReason,
+    urlSource: vo.urlSource,
+  }
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -173,11 +190,11 @@ async function startRadioFromSong() {
   try {
     const res = await radioApi.startFromSong(song.value.id)
     radio.setMoodText(res.moodSummary || '基于歌曲电台')
-    player.setSessionId(res.sessionId)
+    player.setSessionId(String(res.sessionId))
     if (res.songs && res.songs.length > 0) {
       const [first, ...rest] = res.songs
-      player.setSong(first)
-      player.setQueue(rest)
+      player.setSong(voToSong(first))
+      player.setQueue(rest.map(voToSong))
     }
     router.push('/player')
   } catch (e: any) {

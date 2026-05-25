@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import type { AdminToastType } from '@/types'
 import '@/assets/styles/admin.css'
 
 const route = useRoute()
-const router = useRouter()
 const auth = useAuthStore()
 
 interface Toast { id: number; msg: string; type: AdminToastType }

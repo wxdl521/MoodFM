@@ -1,10 +1,10 @@
 import api from './client';
 
-interface User { id: number; username: string; email: string; avatarUrl?: string }
+export interface User { id: number; username: string; email: string; avatarUrl?: string }
 
 interface RegisterData { username: string; email: string; password: string }
 interface LoginData { account: string; password: string; rememberMe?: boolean }
-interface AuthResponse { accessToken: string; refreshToken: string; accessTokenExpiresIn: number; user: User }
+export interface AuthResponse { accessToken: string; refreshToken: string; accessTokenExpiresIn: number; user: User }
 
 export const authApi = {
   register: (data: RegisterData): Promise<AuthResponse> => api.post('/auth/register', data),

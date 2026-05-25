@@ -49,7 +49,7 @@ const paginated = computed(() => {
 })
 
 function statusLabel(u: AdminUser) { return u.status === 1 ? '活跃' : '已禁用' }
-function statusClass(u: AdminUser) { return u.status === 1 ? 'ok' : 'danger' }
+function statusClass(u: AdminUser) { return u.status === 1 ? 'ok' : 'err' }
 
 function openUser(u: AdminUser) { selectedUser.value = u; showModal.value = true }
 function closeModal() { showModal.value = false; selectedUser.value = null }
@@ -66,7 +66,7 @@ async function toggleBan(u: AdminUser) {
     toast(newStatus === 0 ? `已封禁用户：${u.username}` : `已解禁用户：${u.username}`, newStatus === 0 ? 'warn' : 'ok')
   } catch (err) {
     logger.warn('admin:users-toggle-ban', err)
-    toast('操作失败', 'danger')
+    toast('操作失败', 'err')
   }
 }
 
@@ -81,7 +81,7 @@ onMounted(async () => {
     allUsers.value = Array.isArray(data) ? data : []
   } catch (err) {
     logger.warn('admin:users-load', err)
-    toast('加载用户数据失败', 'danger')
+    toast('加载用户数据失败', 'err')
   } finally {
     loading.value = false
   }
@@ -153,7 +153,7 @@ onMounted(async () => {
               <td class="mono fs-11 t-ink3">{{ u.createdAt?.slice(0,10) || '—' }}</td>
               <td class="mono fs-11 t-ink3">{{ u.phone || '—' }}</td>
               <td>
-                <span class="badge" :class="u.role === 'ADMIN' ? 'danger' : 'neutral'">{{ u.role || 'USER' }}</span>
+                <span class="badge" :class="u.role === 'ADMIN' ? 'err' : 'neutral'">{{ u.role || 'USER' }}</span>
               </td>
               <td>
                 <span :class="['badge', statusClass(u)]">
@@ -208,7 +208,7 @@ onMounted(async () => {
                 <span :class="['badge', statusClass(selectedUser)]">
                   <span class="badge-dot"></span>{{ statusLabel(selectedUser) }}
                 </span>
-                <span class="badge" :class="selectedUser.role === 'ADMIN' ? 'danger' : 'neutral'">{{ selectedUser.role || 'USER' }}</span>
+                <span class="badge" :class="selectedUser.role === 'ADMIN' ? 'err' : 'neutral'">{{ selectedUser.role || 'USER' }}</span>
               </div>
             </div>
           </div>

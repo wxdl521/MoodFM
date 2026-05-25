@@ -194,7 +194,6 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useRadioStore } from '@/stores/radio'
-import { usePlayerStore } from '@/stores/player'
 import { useUiStore } from '@/stores/ui'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import MoodWheel from './MoodWheel.vue'
@@ -204,7 +203,6 @@ import { logger } from '@/utils/logger'
 const router = useRouter()
 const auth = useAuthStore()
 const radio = useRadioStore()
-const player = usePlayerStore()
 const ui = useUiStore()
 
 // ── Greeting ───────────────────────────────────────────────────────────────

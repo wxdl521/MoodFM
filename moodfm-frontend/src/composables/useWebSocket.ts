@@ -14,14 +14,12 @@ export function useWebSocket() {
   const playerStore = usePlayerStore()
 
   let client: Client | null = null
-  let currentSessionId: string | null = null
 
   function connect(sessionId: string) {
     if (client?.active) {
       client.deactivate()
     }
 
-    currentSessionId = sessionId
 
     const brokerURL =
       (import.meta.env.VITE_WS_URL as string | undefined) ??
@@ -68,7 +66,6 @@ export function useWebSocket() {
       client.deactivate()
       client = null
     }
-    currentSessionId = null
   }
 
   onUnmounted(() => {
