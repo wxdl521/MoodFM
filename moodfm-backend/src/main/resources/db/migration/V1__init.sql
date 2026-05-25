@@ -1,6 +1,3 @@
--- ⚠️ 已迁移到 Flyway：moodfm-backend/src/main/resources/db/migration/V1__init.sql
--- 本文件保留是为了让 docker-compose 首次启动 mysql 容器时初始化 schema（避免 backend 启动时 flyway 跑空库要建表的 timing 问题）
--- 后续 schema 变更请新增 V2__xxx.sql、V3__xxx.sql 到 backend resources/db/migration/，不要再改本文件
 -- MoodFM 数据库初始化脚本
 -- 对应 PRD v2.0 数据模型
 

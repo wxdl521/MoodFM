@@ -15,6 +15,13 @@
     password: ${MYSQL_PASSWORD:root}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
+  flyway:
+    enabled: true
+    baseline-on-migrate: true   # 已存在的库直接 baseline，不报错
+    baseline-version: 0
+    locations: classpath:db/migration
+    validate-on-migrate: true
+
   data:
     redis:
       host: ${REDIS_HOST:localhost}
