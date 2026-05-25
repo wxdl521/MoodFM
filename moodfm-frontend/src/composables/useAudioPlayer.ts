@@ -122,10 +122,7 @@ function load(url: string): Promise<void> {
             platform: completedSong.platform || 'netease',
           }).catch(err => { logger.warn('player:feedback-completed', err) })
         }
-        const next = store.currentSong
-        if (next?.audioUrl) {
-          load(next.audioUrl).then(() => play())
-        }
+        advanceToPlayableOrStop()
       },
       onseek() {
         if (howl !== instance) return
@@ -173,6 +170,39 @@ function setVolume(v: number) {
 }
 
 /**
+ * Try to play the current song; on missing-URL or load failure, advance to next
+ * playable one. Stops when queue is exhausted. Works regardless of which page is
+ * mounted (auto-skip used to be Player.vue-only — meant audio froze on other
+ * pages when a track failed).
+ */
+function advanceToPlayableOrStop() {
+  const store = usePlayerStore()
+  const song = store.currentSong
+  if (song?.audioUrl) {
+    load(song.audioUrl)
+      .then(() => play())
+      .catch(err => {
+        logger.warn('audio:load-advance', err)
+        if (store.queue.length > 0) {
+          store.next()
+          advanceToPlayableOrStop()
+        } else {
+          stop()
+          store.setPlaying(false)
+        }
+      })
+    return
+  }
+  if (store.queue.length > 0) {
+    store.next()
+    advanceToPlayableOrStop()
+    return
+  }
+  stop()
+  store.setPlaying(false)
+}
+
+/**
  * Returns the shared audio-player handle. Calling this from multiple
  * components is fine — they all observe the same singleton state.
  * See the module-level docstring for the onUnmounted caveat.
@@ -190,5 +220,6 @@ export function useAudioPlayer() {
     seek,
     setVolume,
     load,
+    advanceToPlayableOrStop,
   }
 }
