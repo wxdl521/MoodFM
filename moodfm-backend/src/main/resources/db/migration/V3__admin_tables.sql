@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS `admin_audit_log` (
   KEY `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 在 platform_binding 表添加 cookie_expires_at 字段（如果不存在）
-ALTER TABLE `platform_binding`
-  ADD COLUMN IF NOT EXISTS `cookie_expires_at` DATETIME DEFAULT NULL COMMENT 'Cookie 过期时间';
+-- 在 platform_bindings 表添加 cookie_expires_at 字段（V1 未含此列）
+-- 注意：MySQL 8.0 不支持 ADD COLUMN IF NOT EXISTS（MariaDB 扩展），Flyway 已保证每个 version 只跑一次
+ALTER TABLE `platform_bindings`
+  ADD COLUMN `cookie_expires_at` DATETIME DEFAULT NULL COMMENT 'Cookie 过期时间';
