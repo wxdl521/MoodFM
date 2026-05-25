@@ -1,3 +1,16 @@
+# ============================================================
+# MoodFM 生产配置 (国内云服务器 + IP + http 临时方案)
+# ------------------------------------------------------------
+# 本次相对开发版的端口加固：
+#   - mysql:     去掉 3307:3306，仅 compose 内网可达（其他服务用 mysql:3306）
+#   - backend:   去掉 8081:8081，由 frontend 容器内 nginx 反代
+#   - frontend:  5173:80 改为 80:80（生产标准 HTTP 端口）
+#   - redis / music-adapter: 本来就未暴露端口，保持不变
+#
+# 待办：等域名 ICP 备案下来后，建议在外层加 Caddy / nginx
+#       + Let's Encrypt 做 HTTPS 终止，届时把 frontend 的
+#       ports 改为 expose: 80，由宿主机 Caddy 反代到容器。
+# ============================================================
 services:
   mysql:
     image: mysql:8.0
@@ -11,8 +24,6 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    ports:
-      - "3307:3306"
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --ngram_token_size=2
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root}"]
@@ -39,6 +50,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: 3000
+      ADAPTER_SECRET: ${ADAPTER_SECRET}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 15s
@@ -56,8 +68,6 @@ services:
         condition: service_healthy
       music-adapter:
         condition: service_healthy
-    ports:
-      - "8081:8081"
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       MYSQL_HOST: mysql
@@ -67,7 +77,9 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-moodfm_dev_password}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       MUSIC_ADAPTER_URL: http://music-adapter:3000
+      ADAPTER_SECRET: ${ADAPTER_SECRET}
       JWT_SECRET: ${JWT_SECRET}
       COOKIE_ENCRYPTION_KEY: ${COOKIE_ENCRYPTION_KEY}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
@@ -86,8 +98,9 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    # 备案 + HTTPS 上线后改成 host 层 Caddy 反代，frontend 改成 expose: 80
     ports:
-      - "5173:80"
+      - "80:80"
 
 volumes:
   mysql_data:
