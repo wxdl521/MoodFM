@@ -207,9 +207,22 @@ public class SongServiceImpl implements SongService {
     @Override
     public List<LyricLineVO> getLyrics(Long userId, Long songId) {
         try {
-            PlatformBinding b = bindingService.getDefaultBinding(userId);
-            String cookie = aesUtil.decrypt(b.getCookieEncrypted());
-            JsonNode data = songApiClient.getLyrics(b.getPlatform(), String.valueOf(songId), cookie);
+            PlatformSongMapping mapping = platformSongMappingMapper.selectOne(
+                    new LambdaQueryWrapper<PlatformSongMapping>()
+                            .eq(PlatformSongMapping::getSongId, songId)
+                            .last("LIMIT 1"));
+            if (mapping == null) {
+                log.warn("No platform mapping for song {} (lyrics)", songId);
+                return List.of();
+            }
+            PlatformBinding binding;
+            try {
+                binding = bindingService.getValidBinding(userId, mapping.getPlatform());
+            } catch (BizException e) {
+                binding = bindingService.getDefaultBinding(userId);
+            }
+            String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
+            JsonNode data = songApiClient.getLyrics(mapping.getPlatform(), mapping.getPlatformSongId(), cookie);
             String lrc = data.path("lrc").path("lyric").asText(data.path("lyric").asText(""));
             return parseLrc(lrc);
         } catch (Exception e) {
