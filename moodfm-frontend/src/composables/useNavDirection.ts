@@ -9,6 +9,9 @@ export function getDirection(
   from: RouteLocationNormalized,
   to: RouteLocationNormalized,
 ): TransitionName {
+  // Admin 内部切换：App.vue 顶层 RouterView key 共用 '/admin' 后顶层 Transition
+  // 不会触发，子页淡入由 AdminLayout 内部 router-view 的 Transition 负责，
+  // 所以这里返回什么不会真的生效 —— 但仍按规则返回，便于其它出入 admin 的方向计算。
   const fromDepth = from.meta.depth ?? 0
   const toDepth   = to.meta.depth   ?? 0
 

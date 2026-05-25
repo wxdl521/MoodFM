@@ -2,7 +2,7 @@
   <div :data-theme="uiStore.theme" :data-mood="uiStore.moodPreset" style="overflow-x:hidden;min-height:100vh;">
     <NavBar v-if="route.meta.showNav" />
     <Transition :name="transitionName" mode="out-in">
-      <RouterView :key="$route.path" />
+      <RouterView :key="routerKey" />
     </Transition>
 
     <!-- Global mini player: shown on every page except auth/onboarding/player/admin (controlled by route.meta.hideMiniPlayer) -->
@@ -57,6 +57,12 @@ const { transitionName } = useNavDirection()
 
 // Global mini player visibility — opt-out via route meta
 const showMiniPlayer = computed(() => !route.meta.hideMiniPlayer)
+
+// 顶层 RouterView 的 key：admin 子路由共用 '/admin'，让 AdminLayout（含侧边栏）
+// 在 admin→admin 切换时不被销毁重建；其它路由按 path 触发顶层 transition。
+const routerKey = computed(() =>
+  route.path.startsWith('/admin') ? '/admin' : route.path,
+)
 
 onMounted(() => { authStore.validate() })
 

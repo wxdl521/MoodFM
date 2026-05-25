@@ -101,7 +101,11 @@ const adminInitial = computed(() => (auth.user?.username?.[0] ?? 'A').toUpperCas
     </aside>
 
     <main class="main-content">
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <transition name="admin-panel" mode="out-in">
+          <component :is="Component" :key="route.path" />
+        </transition>
+      </router-view>
     </main>
 
     <div class="toast-wrap">
@@ -109,3 +113,31 @@ const adminInitial = computed(() => (auth.user?.username?.[0] ?? 'A').toUpperCas
     </div>
   </div>
 </template>
+
+<style scoped>
+/* Admin 内部子页切换：侧边栏静止，只内容区 6px 上滑 + 淡入。
+   时间 180ms 离场 / 220ms 入场，与 admin 简洁工具感匹配，不抢侧边栏注意。 */
+.admin-panel-enter-active {
+  transition: opacity 220ms ease, transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.admin-panel-leave-active {
+  transition: opacity 140ms ease;
+}
+.admin-panel-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.admin-panel-leave-to {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-panel-enter-active,
+  .admin-panel-leave-active {
+    transition: opacity 100ms ease !important;
+  }
+  .admin-panel-enter-from {
+    transform: none !important;
+  }
+}
+</style>
