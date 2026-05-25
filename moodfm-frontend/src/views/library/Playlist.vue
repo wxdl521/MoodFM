@@ -5,14 +5,8 @@ import { usePlayerStore } from '@/stores/player'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import { playlistApi } from '@/api/playlist'
 import { songApi } from '@/api/song'
-import type { Song, Platform } from '@/types'
-
-function isPlatform(p: string | undefined): p is Platform {
-  return p === 'netease' || p === 'qqmusic'
-}
-function toPlatform(p?: string): Platform {
-  return isPlatform(p) ? p : 'netease'
-}
+import type { Song } from '@/types'
+import { toPlatform } from '@/utils/platform'
 
 const router = useRouter()
 const route = useRoute()

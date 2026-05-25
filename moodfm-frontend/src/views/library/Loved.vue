@@ -6,7 +6,8 @@ import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import LibraryStateView from '@/components/common/LibraryStateView.vue'
 import { playlistApi } from '@/api/playlist'
-import type { Song } from '@/types'
+import type { Song, SongVO } from '@/types'
+import { toPlatform } from '@/utils/platform'
 
 const router = useRouter()
 const player = usePlayerStore()
@@ -30,6 +31,22 @@ function toPlatformLabel(p: string): string {
   return p === 'netease' ? '网易云' : p === 'qqmusic' ? 'QQ' : p
 }
 
+function voToSong(vo: SongVO): Song {
+  return {
+    id: String(vo.id ?? ''),
+    title: vo.title,
+    artist: vo.artist,
+    album: vo.album,
+    platform: toPlatform(vo.platform),
+    platformSongId: vo.platformSongId ?? '',
+    duration: vo.durationSeconds ?? 0,
+    coverUrl: vo.coverUrl,
+    audioUrl: vo.playUrl ?? undefined,
+    recommendReason: vo.recommendReason,
+    urlSource: vo.urlSource,
+  }
+}
+
 function playSong(index: number) {
   const song = fullSongs.value[index]
   if (!song) return
@@ -51,13 +68,13 @@ async function loadLoved() {
   error.value = null
   try {
     const data = await playlistApi.loved()
-    fullSongs.value = data
-    songs.value = data.map(s => ({
+    fullSongs.value = data.map(voToSong)
+    songs.value = fullSongs.value.map(s => ({
       t: s.title,
       a: s.artist,
       al: s.album ?? '',
-      d: formatDuration((s as any).durationSeconds ?? s.duration),
-      src: toPlatformLabel((s as any).platform ?? 'netease'),
+      d: formatDuration(s.duration),
+      src: toPlatformLabel(s.platform),
       mood: 'calm',
       when: '',
     }))

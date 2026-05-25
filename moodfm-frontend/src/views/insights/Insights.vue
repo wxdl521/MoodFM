@@ -7,7 +7,7 @@ import { use } from 'echarts/core'
 import { LineChart, RadarChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import { insightsApi } from '@/api/insights'
+import { insightsApi, type GenreRadarItem, type TopItemsArtist } from '@/api/insights'
 import html2canvas from 'html2canvas'
 import { logger } from '@/utils/logger'
 
@@ -175,10 +175,10 @@ async function fetchInsights() {
   try {
     const d = days.value
     const [trend, radar, topItems, summary] = await Promise.all([
-      insightsApi.getMoodTrend(d).catch(() => null as any),
-      insightsApi.getGenreRadar(d).catch(() => [] as any[]),
-      insightsApi.getTopItems(d).catch(() => null as any),
-      insightsApi.getSummary(d).catch(() => null as any),
+      insightsApi.getMoodTrend(d).catch(() => null),
+      insightsApi.getGenreRadar(d).catch((): GenreRadarItem[] => []),
+      insightsApi.getTopItems(d).catch(() => null),
+      insightsApi.getSummary(d).catch(() => null),
     ])
 
     // MoodTrendVO: { labels, userMood, songMood } — values are 0-1, scale to 0-10 for chart
@@ -192,7 +192,7 @@ async function fetchInsights() {
     if (radar.length > 0) {
       const map: Record<string, number> = {}
       for (const r of radar) {
-        const key = GENRE_KEY[(r.genre as string).toLowerCase()] ?? r.genre
+        const key = GENRE_KEY[r.genre.toLowerCase()] ?? r.genre
         map[key] = Math.round(r.value * 100)
       }
       genreValues.value = RADAR_AXES.map(a => map[a] ?? 0)
@@ -200,7 +200,7 @@ async function fetchInsights() {
 
     // TopItemsVO: { artists: [{ name, tag, totalTime, proportion }] }
     if (topItems?.artists?.length) {
-      artists.value = topItems.artists.slice(0, 5).map((a: any) => ({
+      artists.value = topItems.artists.slice(0, 5).map((a: TopItemsArtist) => ({
         n: a.name,
         en: a.tag || 'ARTIST',
         t: a.totalTime || '—',

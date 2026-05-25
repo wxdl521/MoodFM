@@ -99,17 +99,16 @@ async function loadItems() {
   error.value = null
   try {
     const res = await blacklistApi.getAll()
-    const raw: any[] = (res as any[]) ?? []
-    items.value = raw.map(r => ({
-      id: r.id ?? r._id ?? String(Math.random()),
-      type: r.type ?? 'song',
-      value: r.value ?? '',
-      label: r.label ?? r.songName ?? r.value,
-      artistLabel: r.artistName ?? r.artist ?? undefined,
-      addedAt: formatDate(r.createdAt ?? r.addedAt),
+    items.value = (res ?? []).map(r => ({
+      id: r.id,
+      type: r.type,
+      value: r.value,
+      label: r.label ?? r.value,
+      artistLabel: r.artistLabel,
+      addedAt: formatDate(r.addedAt),
     }))
-  } catch (e: any) {
-    error.value = e?.message ?? '未知错误'
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '未知错误'
   } finally {
     loading.value = false
   }

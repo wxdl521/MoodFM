@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import '@/assets/styles/admin.css'
 import { platformAdminApi, type CookieExpiryRow } from '@/api/admin'
+import type { AdminToastType } from '@/types'
 import { logger } from '@/utils/logger'
 
 interface Endpoint { name: string; status: 'ok' | 'warn'; latency: string }
@@ -48,7 +49,7 @@ const platforms = ref<Platform[]>([
 const cookieTable = ref<CookieExpiryRow[]>([])
 const loadingStats = ref(false)
 
-function toast(msg: string, type = 'ok') { (window as any).__adminToast?.(msg, type) }
+function toast(msg: string, type: AdminToastType = 'ok') { window.__adminToast?.(msg, type) }
 
 function callsPercent(p: Platform) { return Math.round(p.callsToday / p.callsLimit * 100) }
 

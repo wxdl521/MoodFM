@@ -26,11 +26,13 @@ interface InsightsSummary {
   weeklyReportId: number | null;
 }
 
-interface MoodTrendVO { labels: string[]; userMood: number[]; songMood: number[]; lowPointIndex: number }
-interface GenreRadarItem { genre: string; genreCn: string; value: number }
-interface TopItemsResponse {
-  artists: Array<{ name: string; tag: string; totalTime: string; proportion: number }>;
-  songs: Array<{ title: string; artist: string; playCount: number; proportion: number }>;
+export interface MoodTrendVO { labels: string[]; userMood: number[]; songMood: number[]; lowPointIndex: number }
+export interface GenreRadarItem { genre: string; genreCn: string; value: number }
+export interface TopItemsArtist { name: string; tag: string; totalTime: string; proportion: number }
+export interface TopItemsSong { title: string; artist: string; playCount: number; proportion: number }
+export interface TopItemsResponse {
+  artists: TopItemsArtist[];
+  songs: TopItemsSong[];
 }
 
 interface CalendarDayVO { day: number; mood: string; tracks: number; minutes: number; sessions: number; future: boolean; empty: boolean }

@@ -7,13 +7,14 @@ import { GridComponent, TooltipComponent, LegendComponent, RadarComponent } from
 import { CanvasRenderer } from 'echarts/renderers'
 import '@/assets/styles/admin.css'
 import { analyticsAdminApi, type GenreCount, type PlatformCount, type TopSong, type MoodDist } from '@/api/admin'
+import type { AdminToastType } from '@/types'
 import { logger } from '@/utils/logger'
 
 use([LineChart, BarChart, PieChart, RadarChart, GridComponent, TooltipComponent, LegendComponent, RadarComponent, CanvasRenderer])
 
 const range = ref<'7d' | '30d' | '90d'>('30d')
 
-function toast(msg: string, type = 'ok') { (window as any).__adminToast?.(msg, type) }
+function toast(msg: string, type: AdminToastType = 'ok') { window.__adminToast?.(msg, type) }
 
 // ── Data refs ────────────────────────────────────────────────────────────────
 

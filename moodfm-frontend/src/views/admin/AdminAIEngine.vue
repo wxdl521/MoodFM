@@ -2,6 +2,7 @@
 import { ref, onMounted, watch } from 'vue'
 import '@/assets/styles/admin.css'
 import { aiConfigAdminApi, sceneAdminApi, SceneTemplate } from '@/api/admin'
+import type { AdminToastType } from '@/types'
 import { logger } from '@/utils/logger'
 
 interface WeightItem { key: string; label: string; desc: string; val: number; min: number; max: number }
@@ -44,7 +45,7 @@ const promptTemplate = ref(
   '推荐时考虑用户黑名单：{{blacklist}}。'
 )
 
-function toast(msg: string, type = 'ok') { (window as any).__adminToast?.(msg, type) }
+function toast(msg: string, type: AdminToastType = 'ok') { window.__adminToast?.(msg, type) }
 
 async function loadScenes() {
   loadingScenes.value = true

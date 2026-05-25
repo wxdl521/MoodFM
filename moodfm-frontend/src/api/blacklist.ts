@@ -1,14 +1,15 @@
 import api from './client';
 
-interface BlacklistEntry {
+export interface BlacklistEntry {
   id: string;
   type: 'artist' | 'song' | 'keyword';
   value: string;
   label?: string;
+  artistLabel?: string;
+  addedAt?: string;
 }
 
-interface AddBlacklistEntry {
-  // entry: { type: 'artist'|'song'|'keyword', value: string, label?: string }
+export interface AddBlacklistEntry {
   type: 'artist' | 'song' | 'keyword';
   value: string;
   label?: string;

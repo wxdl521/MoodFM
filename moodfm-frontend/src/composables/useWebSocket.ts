@@ -4,6 +4,12 @@ import { usePlayerStore } from '@/stores/player'
 import type { Song } from '@/types'
 import { logger } from '@/utils/logger'
 
+function isSong(v: unknown): v is Song {
+  if (!v || typeof v !== 'object') return false
+  const r = v as Record<string, unknown>
+  return typeof r.id === 'string' && typeof r.title === 'string' && typeof r.artist === 'string'
+}
+
 export function useWebSocket() {
   const playerStore = usePlayerStore()
 
@@ -31,12 +37,13 @@ export function useWebSocket() {
           `/topic/radio/${sessionId}`,
           (message: IMessage) => {
             try {
-              const payload = JSON.parse(message.body)
+              const payload: unknown = JSON.parse(message.body)
               // Expect payload to be a Song or array of Song
               if (Array.isArray(payload)) {
-                playerStore.addToQueue(payload as Song[])
-              } else if (payload && typeof payload === 'object' && 'id' in payload) {
-                playerStore.addToQueue([payload as Song])
+                const songs = payload.filter(isSong)
+                if (songs.length) playerStore.addToQueue(songs)
+              } else if (isSong(payload)) {
+                playerStore.addToQueue([payload])
               }
             } catch (err) {
               // silent: 服务器偶发畸形帧无需骚扰用户

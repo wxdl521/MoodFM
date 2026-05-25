@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import '@/assets/styles/admin.css'
 import { blacklistAdminApi, GlobalBlacklist } from '@/api/admin'
+import type { AdminToastType } from '@/types'
 import { logger } from '@/utils/logger'
 
 const tab = ref<'artists' | 'songs' | 'keywords'>('artists')
@@ -14,7 +15,7 @@ const artists = ref<GlobalBlacklist[]>([])
 const songs = ref<GlobalBlacklist[]>([])
 const keywords = ref<GlobalBlacklist[]>([])
 
-function toast(msg: string, type = 'ok') { (window as any).__adminToast?.(msg, type) }
+function toast(msg: string, type: AdminToastType = 'ok') { window.__adminToast?.(msg, type) }
 
 async function fetchTab(type: 'artist' | 'song' | 'keyword', q?: string) {
   loading.value = true

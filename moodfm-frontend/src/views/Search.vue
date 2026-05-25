@@ -97,6 +97,7 @@ import { searchApi } from '@/api/search'
 import { radioApi } from '@/api/radio'
 import type { SearchMode } from '@/api/search'
 import type { SongVO, Song } from '@/types'
+import { toPlatform } from '@/utils/platform'
 import { logger } from '@/utils/logger'
 
 const router = useRouter()
@@ -203,7 +204,7 @@ function voToSong(vo: SongVO): Song {
     title: vo.title,
     artist: vo.artist,
     album: vo.album,
-    platform: (vo.platform ?? 'netease') as Song['platform'],
+    platform: toPlatform(vo.platform),
     platformSongId: vo.platformSongId ?? '',
     duration: vo.durationSeconds ?? 0,
     coverUrl: vo.coverUrl,

@@ -2,6 +2,7 @@
 import { ref, onMounted, watch } from 'vue'
 import '@/assets/styles/admin.css'
 import { configAdminApi, auditLogAdminApi, AdminAuditLog } from '@/api/admin'
+import type { AdminToastType } from '@/types'
 import { logger } from '@/utils/logger'
 
 interface FlagItem { key: string; label: string; desc: string; on: boolean }
@@ -50,7 +51,7 @@ const showKvModal = ref(false)
 const showAdminModal = ref(false)
 const newAdmin = ref({ name: '', email: '', role: 'operator' })
 
-function toast(msg: string, type = 'ok') { (window as any).__adminToast?.(msg, type) }
+function toast(msg: string, type: AdminToastType = 'ok') { window.__adminToast?.(msg, type) }
 
 async function loadFlags() {
   try {

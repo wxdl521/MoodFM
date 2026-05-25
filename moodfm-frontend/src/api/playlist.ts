@@ -1,4 +1,5 @@
 import api from './client';
+import type { SongVO } from '@/types';
 
 interface Song { id: string; title: string; artist: string; album?: string; platform: 'netease' | 'qqmusic'; platformSongId: string; duration: number; coverUrl?: string; audioUrl?: string }
 interface Playlist { id: string; name: string; platform: 'netease' | 'qqmusic'; coverUrl?: string; trackCount: number; description?: string }
@@ -12,7 +13,7 @@ export interface SmartPlaylistDetail { type: string; name: string; icon: string;
 export const playlistApi = {
   list:             (): Promise<Playlist[]>                => api.get('/playlists'),
   getPlaylist:      (id: string): Promise<PlaylistDetail>  => api.get(`/playlists/${id}`),
-  loved:            (): Promise<Song[]>                    => api.get('/songs/liked'),
+  loved:            (): Promise<SongVO[]>                  => api.get('/songs/liked'),
   isLiked:          (songId: string): Promise<{ liked: boolean }> => api.get(`/songs/${songId}/liked`),
   toggleLike:       (songId: string): Promise<{ liked: boolean }> => api.post(`/songs/${songId}/like`),
 

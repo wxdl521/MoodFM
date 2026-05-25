@@ -73,3 +73,13 @@ export interface MoodSessionVO {
   moodText?: string
   createdAt?: string
 }
+
+// Admin layout exposes a global toast helper (AdminLayout.vue registers it on
+// mount). Child admin views call it without importing — keep this declaration
+// in sync with AdminLayout.showToast's signature.
+export type AdminToastType = 'ok' | 'err' | 'info' | 'warn'
+declare global {
+  interface Window {
+    __adminToast?: (msg: string, type?: AdminToastType) => void
+  }
+}

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import api from '@/api/client'
+import type { AdminToastType } from '@/types'
 import { logger } from '@/utils/logger'
 
 interface AdminUser {
@@ -53,8 +54,8 @@ function statusClass(u: AdminUser) { return u.status === 1 ? 'ok' : 'danger' }
 function openUser(u: AdminUser) { selectedUser.value = u; showModal.value = true }
 function closeModal() { showModal.value = false; selectedUser.value = null }
 
-function toast(msg: string, type = 'ok') {
-  ;(window as any).__adminToast?.(msg, type)
+function toast(msg: string, type: AdminToastType = 'ok') {
+  window.__adminToast?.(msg, type)
 }
 
 async function toggleBan(u: AdminUser) {

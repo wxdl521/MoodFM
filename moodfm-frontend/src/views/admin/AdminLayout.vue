@@ -2,16 +2,17 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import type { AdminToastType } from '@/types'
 import '@/assets/styles/admin.css'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 
-interface Toast { id: number; msg: string; type: string }
+interface Toast { id: number; msg: string; type: AdminToastType }
 const toasts = ref<Toast[]>([])
 
-function showToast(msg: string, type = 'ok') {
+function showToast(msg: string, type: AdminToastType = 'ok') {
   const id = Date.now() + Math.random()
   toasts.value.push({ id, msg, type })
   setTimeout(() => {
@@ -20,8 +21,7 @@ function showToast(msg: string, type = 'ok') {
   }, 3200)
 }
 
-// Expose globally so child pages can call showToast
-;(window as any).__adminToast = showToast
+window.__adminToast = showToast
 
 const NAV = [
   {

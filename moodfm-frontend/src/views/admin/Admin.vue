@@ -7,10 +7,11 @@ import { logger } from '@/utils/logger'
 
 const router = useRouter()
 const loading = ref(true)
-const users = ref<Array<{
+interface AdminUserRow {
   id: number; username: string; email: string; phone: string
   role: string; status: number; createdAt: string
-}>>([])
+}
+const users = ref<AdminUserRow[]>([])
 
 const stats = ref({
   totalUsers: 0,
@@ -32,8 +33,8 @@ async function loadStats() {
 async function loadUsers() {
   loading.value = true
   try {
-    const data = await api.get('/admin/users')
-    users.value = data as any[]
+    const data = (await api.get('/admin/users')) as AdminUserRow[]
+    users.value = data ?? []
   } catch (err) {
     // silent: 非管理员或权限不足时返回空列表
     logger.warn('admin:load-users', err)
@@ -48,12 +49,9 @@ async function toggleStatus(u: { id: number; status: number }) {
     await api.put(`/admin/users/${u.id}/status`, { status: newStatus })
     u.status = newStatus
   } catch (err) {
-    // 用户主动操作：状态切换失败需提示。本页未引入 __adminToast，先用 alert 兜底
+    // 用户主动操作：状态切换失败需提示。
     logger.warn('admin:toggle-user-status', err)
-    if (typeof window !== 'undefined') {
-      const toast = (window as { __adminToast?: (msg: string, type?: string) => void }).__adminToast
-      if (toast) toast('操作失败，请稍后重试', 'err')
-    }
+    window.__adminToast?.('操作失败，请稍后重试', 'err')
   }
 }
 

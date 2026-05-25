@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import '@/assets/styles/admin.css'
 import { notificationsAdminApi, AdminNotification } from '@/api/admin'
+import type { AdminToastType } from '@/types'
 import { logger } from '@/utils/logger'
 
 const tab = ref<'compose' | 'history'>('compose')
@@ -37,7 +38,7 @@ const sendStats = computed(() => {
   }
 })
 
-function toast(msg: string, type = 'ok') { (window as any).__adminToast?.(msg, type) }
+function toast(msg: string, type: AdminToastType = 'ok') { window.__adminToast?.(msg, type) }
 
 function applyTemplate(t: typeof templates[number]) {
   form.value.title = t.title; form.value.body = t.body

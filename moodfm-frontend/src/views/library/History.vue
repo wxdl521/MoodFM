@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { usePlayerStore } from '@/stores/player'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import LibraryStateView from '@/components/common/LibraryStateView.vue'
-import { historyApi } from '@/api/history'
+import { historyApi, type HistoryParams, type PlayHistory, type HistorySong } from '@/api/history'
 import { logger } from '@/utils/logger'
 
 const router = useRouter()
@@ -13,7 +13,7 @@ const loading = ref(true)
 const loadingMore = ref(false)
 const error = ref<string | null>(null)
 
-interface DayItem { t: string; n: string; a: string; coverUrl?: string; durationPlayed?: number; song?: any }
+interface DayItem { t: string; n: string; a: string; coverUrl?: string; durationPlayed?: number; song?: HistorySong }
 interface DayGroup { date: string; cn: string; items: DayItem[] }
 
 const days = ref<DayGroup[]>([])
@@ -65,7 +65,7 @@ function dayKey(iso: string): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
 }
 
-function groupItems(items: any[]): DayGroup[] {
+function groupItems(items: PlayHistory[]): DayGroup[] {
   const grouped: Record<string, DayGroup> = {}
   const order: string[] = []
   for (const item of items) {
@@ -90,16 +90,16 @@ function groupItems(items: any[]): DayGroup[] {
   return order.map(k => grouped[k])
 }
 
-let allItems: any[] = []
+let allItems: PlayHistory[] = []
 
 async function loadPage(p: number, append: boolean) {
-  const params: Record<string, any> = { page: p, pageSize: 20 }
+  const params: HistoryParams = { page: p, pageSize: 20 }
   if (scene.value) params.scene = scene.value
   if (startDate.value) params.startDate = startDate.value
   if (endDate.value) params.endDate = endDate.value
-  const result = await historyApi.list(params as any)
-  const items = (result as any).items ?? []
-  total.value = (result as any).total ?? 0
+  const result = await historyApi.list(params)
+  const items = result.items ?? []
+  total.value = result.total ?? 0
   if (append) {
     allItems = [...allItems, ...items]
   } else {
