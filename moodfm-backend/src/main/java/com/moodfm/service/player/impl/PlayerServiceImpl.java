@@ -782,57 +782,108 @@ public class PlayerServiceImpl implements PlayerService {
                 .collect(Collectors.toList());
         if (needPersist.isEmpty()) return;
 
-        // Build composite key pairs for batch query
-        var titleArtistPairs = needPersist.stream()
-                .map(s -> new String[]{s.getTitle(), s.getArtist()})
-                .collect(Collectors.toList());
-
-        // Single query: fetch all songs matching any of the (title, artist) pairs
-        LambdaQueryWrapper<Song> songQuery = new LambdaQueryWrapper<>();
-        for (int i = 0; i < titleArtistPairs.size(); i++) {
-            String[] pair = titleArtistPairs.get(i);
-            if (i > 0) songQuery.or();
-            songQuery.and(w -> w.eq(Song::getTitle, pair[0]).eq(Song::getArtist, pair[1]));
-        }
-        List<Song> existingSongs = songMapper.selectList(songQuery);
-        Map<String, Song> existingByKey = new HashMap<>();
-        for (Song s : existingSongs) {
-            existingByKey.put(s.getTitle() + "\0" + s.getArtist(), s);
-        }
-
-        Map<Long, SongVO> newSongsById = new HashMap<>();
-
+        // Split into two groups: with external (platform, platformSongId) and title/artist-only fallback.
+        // The (platform, platformSongId) pair is the authoritative external ID and the unique key on
+        // platform_song_mapping — using it first avoids creating duplicate Song rows when the same
+        // external track has minor title variations (whitespace, version tags, simplified/traditional).
+        List<SongVO> byPlatformId = new ArrayList<>();
+        List<SongVO> byTitleArtistOnly = new ArrayList<>();
         for (SongVO vo : needPersist) {
-            try {
-                String key = vo.getTitle() + "\0" + vo.getArtist();
-                Song existing = existingByKey.get(key);
-
-                Long songId;
-                if (existing != null) {
-                    songId = existing.getId();
-                } else {
-                    Song song = new Song();
-                    song.setTitle(vo.getTitle());
-                    song.setArtist(vo.getArtist());
-                    song.setAlbum(vo.getAlbum());
-                    song.setDurationSeconds(vo.getDurationSeconds());
-                    song.setCoverUrl(vo.getCoverUrl());
-                    songMapper.insert(song);
-                    songId = song.getId();
-                    newSongsById.put(songId, vo);
-                }
-                // Replace Netease platform ID with the DB auto-increment ID so that
-                // all downstream references (feedback, liked, history) use the correct key.
-                vo.setId(songId);
-
-                // Auto-index into Qdrant for future vector recall
-                indexSongForVectorSearch(songId, vo.getTitle(), vo.getArtist(), vo.getAlbum());
-            } catch (Exception e) {
-                log.warn("Failed to persist song: {} - {}", vo.getTitle(), vo.getArtist(), e);
+            if (vo.getPlatformSongId() != null) {
+                byPlatformId.add(vo);
+            } else {
+                byTitleArtistOnly.add(vo);
             }
         }
 
-        // Batch create platform mappings: single query to find existing, then insert missing
+        // Step 1: single query against platform_song_mapping by (platform, platformSongId IN ...)
+        Map<String, Long> existingByExternalId = new HashMap<>();
+        if (!byPlatformId.isEmpty()) {
+            List<String> platformSongIds = byPlatformId.stream()
+                    .map(SongVO::getPlatformSongId)
+                    .distinct()
+                    .collect(Collectors.toList());
+            List<PlatformSongMapping> existingMappings = platformSongMappingMapper.selectList(
+                    new LambdaQueryWrapper<PlatformSongMapping>()
+                            .eq(PlatformSongMapping::getPlatform, platform)
+                            .in(PlatformSongMapping::getPlatformSongId, platformSongIds));
+            for (PlatformSongMapping m : existingMappings) {
+                existingByExternalId.put(m.getPlatformSongId(), m.getSongId());
+            }
+        }
+
+        // Step 2: walk byPlatformId — mapping hits reuse song id and skip song insert + mapping insert.
+        // Misses fall through to the (title, artist) batch path below alongside byTitleArtistOnly.
+        Map<Long, SongVO> newSongsById = new HashMap<>();
+        List<SongVO> fallbackToTitleArtist = new ArrayList<>(byTitleArtistOnly);
+
+        for (SongVO vo : byPlatformId) {
+            Long existingSongId = existingByExternalId.get(vo.getPlatformSongId());
+            if (existingSongId != null) {
+                try {
+                    vo.setId(existingSongId);
+                    // Keep original behavior: still index into Qdrant for already-known songs.
+                    indexSongForVectorSearch(existingSongId, vo.getTitle(), vo.getArtist(), vo.getAlbum());
+                } catch (Exception e) {
+                    log.warn("Failed to re-index existing song {}: {} - {}", existingSongId, vo.getTitle(), vo.getArtist(), e);
+                }
+            } else {
+                fallbackToTitleArtist.add(vo);
+            }
+        }
+
+        // Step 3: original (title, artist) batch path for both fallback groups (true new + no-external-id).
+        if (!fallbackToTitleArtist.isEmpty()) {
+            var titleArtistPairs = fallbackToTitleArtist.stream()
+                    .map(s -> new String[]{s.getTitle(), s.getArtist()})
+                    .collect(Collectors.toList());
+
+            LambdaQueryWrapper<Song> songQuery = new LambdaQueryWrapper<>();
+            for (int i = 0; i < titleArtistPairs.size(); i++) {
+                String[] pair = titleArtistPairs.get(i);
+                if (i > 0) songQuery.or();
+                songQuery.and(w -> w.eq(Song::getTitle, pair[0]).eq(Song::getArtist, pair[1]));
+            }
+            List<Song> existingSongs = songMapper.selectList(songQuery);
+            Map<String, Song> existingByKey = new HashMap<>();
+            for (Song s : existingSongs) {
+                existingByKey.put(s.getTitle() + "\0" + s.getArtist(), s);
+            }
+
+            for (SongVO vo : fallbackToTitleArtist) {
+                try {
+                    String key = vo.getTitle() + "\0" + vo.getArtist();
+                    Song existing = existingByKey.get(key);
+
+                    Long songId;
+                    if (existing != null) {
+                        songId = existing.getId();
+                    } else {
+                        Song song = new Song();
+                        song.setTitle(vo.getTitle());
+                        song.setArtist(vo.getArtist());
+                        song.setAlbum(vo.getAlbum());
+                        song.setDurationSeconds(vo.getDurationSeconds());
+                        song.setCoverUrl(vo.getCoverUrl());
+                        songMapper.insert(song);
+                        songId = song.getId();
+                        newSongsById.put(songId, vo);
+                    }
+                    // Replace Netease platform ID with the DB auto-increment ID so that
+                    // all downstream references (feedback, liked, history) use the correct key.
+                    vo.setId(songId);
+
+                    // Auto-index into Qdrant for future vector recall
+                    indexSongForVectorSearch(songId, vo.getTitle(), vo.getArtist(), vo.getAlbum());
+                } catch (Exception e) {
+                    log.warn("Failed to persist song: {} - {}", vo.getTitle(), vo.getArtist(), e);
+                }
+            }
+        }
+
+        // Batch create platform mappings: single query to find existing, then insert missing.
+        // newSongsById only contains true-new songs whose (platform, platformSongId) was confirmed
+        // absent in Step 1, so the unique-key collision can no longer occur.
         if (!newSongsById.isEmpty()) {
             List<Long> newSongIds = new ArrayList<>(newSongsById.keySet());
             List<PlatformSongMapping> existingMappings = platformSongMappingMapper.selectList(
