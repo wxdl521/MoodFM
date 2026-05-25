@@ -1,4 +1,4 @@
-package com.moodfm.controller;
+package com.moodfm.controller.admin;
 
 import com.moodfm.common.result.R;
 import com.moodfm.mapper.MoodSessionMapper;

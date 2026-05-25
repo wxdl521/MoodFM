@@ -1,4 +1,4 @@
-package com.moodfm.controller;
+package com.moodfm.controller.admin;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.moodfm.common.result.R;

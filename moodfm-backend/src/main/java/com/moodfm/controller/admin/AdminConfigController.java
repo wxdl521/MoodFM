@@ -1,4 +1,4 @@
-package com.moodfm.controller;
+package com.moodfm.controller.admin;
 
 import com.moodfm.common.result.R;
 import io.swagger.v3.oas.annotations.Operation;
