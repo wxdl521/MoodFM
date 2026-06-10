@@ -306,7 +306,6 @@ import { usePlayerStore } from '@/stores/player'
 import { useRadioStore } from '@/stores/radio'
 import { useUiStore } from '@/stores/ui'
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
-import { useWebSocket } from '@/composables/useWebSocket'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import { blacklistApi } from '@/api/blacklist'
 import { songApi, type LyricLine } from '@/api/song'
@@ -319,7 +318,6 @@ const player = usePlayerStore()
 const radio  = useRadioStore()
 const ui     = useUiStore()
 const audio  = useAudioPlayer()
-const ws     = useWebSocket()
 
 // ── Local state ─────────────────────────────────────────────────────────────
 const liked             = ref(false)
@@ -771,7 +769,6 @@ onMounted(() => {
     router.replace('/home')
     return
   }
-  if (player.sessionId) ws.connect(player.sessionId)
   if (player.currentSong.audioUrl) {
     // Load if: no Howl loaded yet, OR the loaded URL differs from the current song
     // (new session). Skip reload only when the same URL is already loaded (back-nav to a paused song).

@@ -8,43 +8,14 @@
     <!-- Global mini player: shown on every page except auth/onboarding/player/admin (controlled by route.meta.hideMiniPlayer) -->
     <MiniPlayer v-if="showMiniPlayer" />
 
-    <!-- Global notification toasts -->
-    <div v-if="notifications.length" style="position:fixed;top:80px;right:24px;z-index:200;display:flex;flex-direction:column;gap:8px;">
-      <div
-        v-for="n in notifications"
-        :key="n.id"
-        style="background:var(--paper);border:1px solid var(--mood-b);border-radius:12px;padding:14px 18px;
-               max-width:320px;box-shadow:0 4px 20px rgba(0,0,0,.12);display:flex;align-items:center;gap:10px;"
-      >
-        <div style="flex:1;">
-          <div style="font-family:var(--serif-cn);font-size:14px;font-weight:500;">
-            {{ n.type === 'cookie_invalid' ? '平台凭证即将失效' : '通知' }}
-          </div>
-          <div style="font-family:var(--serif-cn);font-size:12px;color:var(--ink-2);margin-top:2px;">
-            {{ n.type === 'cookie_invalid' ? `${n.platform} 平台的登录凭证即将过期，请重新绑定。` : n.message }}
-          </div>
-        </div>
-        <button
-          v-if="n.type === 'cookie_invalid'"
-          style="font-family:var(--serif-cn);font-size:12px;padding:4px 10px;border:1px solid var(--rule);
-                 border-radius:6px;background:transparent;cursor:pointer;white-space:nowrap;"
-          @click="dismiss(n.id); $router.push('/bind')"
-        >去绑定</button>
-        <button
-          style="background:transparent;border:none;cursor:pointer;color:var(--ink-3);font-size:16px;padding:0 4px;"
-          @click="dismiss(n.id)"
-        >×</button>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, watch, onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
-import { useNotifications } from '@/composables/useNotifications'
 import { useNavDirection } from '@/composables/useNavDirection'
 import { useElectronBridge } from '@/composables/useElectronBridge'
 import NavBar from '@/components/common/NavBar.vue'
@@ -53,7 +24,6 @@ import MiniPlayer from '@/components/common/MiniPlayer.vue'
 const route = useRoute()
 const uiStore = useUiStore()
 const authStore = useAuthStore()
-const { notifications, connect, dismiss } = useNotifications()
 const { transitionName } = useNavDirection()
 useElectronBridge()
 
@@ -68,9 +38,6 @@ const routerKey = computed(() =>
 
 onMounted(() => { authStore.validate() })
 
-watch(() => authStore.user?.id, (id) => {
-  if (id) connect(id)
-}, { immediate: true })
 </script>
 
 <style>
