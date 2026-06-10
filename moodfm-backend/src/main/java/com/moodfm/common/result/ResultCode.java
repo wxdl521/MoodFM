@@ -18,7 +18,7 @@ public enum ResultCode {
     USER_ALREADY_EXISTS(1002, "邮箱或手机号已注册", HttpStatus.CONFLICT),
     WRONG_PASSWORD(1003, "密码错误", HttpStatus.BAD_REQUEST),
     ACCOUNT_LOCKED(1004, "账号已被锁定，请15分钟后再试", HttpStatus.LOCKED),
-    ACCOUNT_DISABLED(1005, "账号已注销", HttpStatus.FORBIDDEN),
+    ACCOUNT_DISABLED(1005, "账号已被禁用，请联系管理员", HttpStatus.FORBIDDEN),
 
     // 验证码错误码 (11xx)
     INVALID_SMS_CODE(1101, "短信验证码错误或已过期", HttpStatus.BAD_REQUEST),

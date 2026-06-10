@@ -493,9 +493,8 @@ public class UserServiceImpl implements UserService {
     public void deleteAccount(Long userId) {
         // Revoke all refresh tokens for this user before soft-deleting
         revokeAllUserRefreshTokens(userId);
-        User user = getById(userId);
-        user.setStatus(0); // soft delete via @TableLogic
-        userMapper.updateById(user);
+        // @TableLogic on User.deleted → UPDATE users SET deleted=1 WHERE id=? AND deleted=0
+        userMapper.deleteById(userId);
     }
 
     @Override
