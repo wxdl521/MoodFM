@@ -6,10 +6,16 @@ export interface StoreSchema {
   serverUrl: string;
 }
 
+// ⚠️ 决策点：打包发布前必须把 PROD_SERVER_URL 改成真实服务器地址（如 http://你的服务器IP）
+const PROD_SERVER_URL = 'http://YOUR_SERVER_IP';
+
 const defaults: StoreSchema = {
   windowBounds: { width: 1200, height: 800 },
   startMinimized: false,
-  serverUrl: 'http://localhost:5173',
+  serverUrl:
+    process.env.NODE_ENV === 'development'
+      ? 'http://localhost:5173'
+      : PROD_SERVER_URL,
 };
 
 let _store: InstanceType<typeof ElectronStore<StoreSchema>> | null = null;

@@ -1,11 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-// Expose the backend server URL so the Vue SPA can make API requests.
-// In dev this defaults to the Vite dev server; in prod the actual server URL.
-contextBridge.exposeInMainWorld(
-  '__MOODFM_SERVER_URL',
-  process.env.VITE_SERVER_URL || 'http://localhost:5173',
-);
+// main 进程通过 webPreferences.additionalArguments 注入（沙箱 preload 也能读 process.argv）
+const serverUrlArg = process.argv.find((a) => a.startsWith('--moodfm-server-url='));
+const serverUrl = serverUrlArg
+  ? serverUrlArg.slice('--moodfm-server-url='.length)
+  : 'http://localhost:5173';
+
+contextBridge.exposeInMainWorld('__MOODFM_SERVER_URL', serverUrl);
 
 // Bidirectional IPC bridge for media player controls.
 // Renderer calls these methods; main process listens via ipcMain.

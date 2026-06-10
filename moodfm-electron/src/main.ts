@@ -22,6 +22,7 @@ async function createWindow() {
   const store = await loadStore();
   const bounds = store.get('windowBounds');
   const minimized = store.get('startMinimized');
+  const serverUrl = store.get('serverUrl');
 
   mainWindow = new BrowserWindow({
     width: bounds.width,
@@ -36,7 +37,8 @@ async function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
+      additionalArguments: [`--moodfm-server-url=${serverUrl}`],
     },
   });
 
