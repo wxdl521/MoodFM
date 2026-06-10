@@ -22,8 +22,10 @@ public class User {
 
     private String avatarUrl;
 
+    private Integer status; // 1=正常 0=封禁（管理员操作）
+
     @TableLogic
-    private Integer status; // 1=正常 0=软删除
+    private Integer deleted; // 1=已注销（逻辑删除）
 
     private String role; // USER / ADMIN
 

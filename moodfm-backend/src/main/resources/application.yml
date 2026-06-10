@@ -53,9 +53,9 @@ mybatis-plus:
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
   global-config:
     db-config:
-      logic-delete-field: status
-      logic-delete-value: 0
-      logic-not-delete-value: 1
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
 
 springdoc:
   api-docs:
