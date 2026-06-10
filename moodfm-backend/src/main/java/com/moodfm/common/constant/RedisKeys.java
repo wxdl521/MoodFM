@@ -24,6 +24,12 @@ public final class RedisKeys {
     public static final String EMAIL_VERIFY = "email:verify:%s";           // email
     public static final String EMAIL_ATTEMPTS = "email:attempts:%s";       // email
 
+    // 验证码发送限流
+    public static final String SMS_SEND_COOLDOWN = "sms:cooldown:%s";     // phone
+    public static final String SMS_SEND_DAILY = "sms:daily:%s:%s";        // phone:yyyyMMdd
+    public static final String EMAIL_SEND_COOLDOWN = "email:cooldown:%s"; // email
+    public static final String EMAIL_SEND_DAILY = "email:daily:%s:%s";    // email:yyyyMMdd
+
     // 平台绑定
     public static final String QR_LOGIN_STATUS = "qrlogin:status:%s";      // platform:key
 

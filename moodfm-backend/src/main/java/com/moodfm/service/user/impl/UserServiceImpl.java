@@ -67,6 +67,9 @@ public class UserServiceImpl implements UserService {
     private static final int MAX_OTP_ATTEMPTS = 5;
     private static final Duration OTP_ATTEMPTS_TTL = Duration.ofMinutes(15);
 
+    private static final Duration OTP_SEND_COOLDOWN = Duration.ofSeconds(60);
+    private static final int OTP_DAILY_SEND_LIMIT = 10;
+
     private static final java.util.regex.Pattern PASSWORD_PATTERN =
             java.util.regex.Pattern.compile("^(?=.*[A-Za-z])(?=.*\\d).{8,}$");
 
@@ -544,8 +547,33 @@ public class UserServiceImpl implements UserService {
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
+    /**
+     * 验证码发送限流：60 秒冷却 + 每个目标每日上限（best-effort，与现有 verify* 计数器同模式）。
+     * 冷却在最后设置，确保被每日上限拒绝的请求不消耗冷却窗口。
+     * 注意：INCR 与 EXPIRE 非原子——若 expire 失败该 daily key 当天无 TTL（key 含日期，次日自愈）；
+     * 超限后计数器仍继续自增（仅监控数值偏大，不影响拦截）；Redis 异常致 increment 返回 null 时
+     * 选择 fail-open 放行，避免 Redis 抖动直接打断注册流程。如需更强保证改用 SET NX EX。
+     */
+    private void checkOtpSendRateLimit(String cooldownKey, String dailyKey) {
+        if (Boolean.TRUE.equals(redisTemplate.hasKey(cooldownKey))) {
+            throw new BizException(ResultCode.TOO_MANY_REQUESTS, "发送过于频繁，请稍后再试");
+        }
+        Long daily = redisTemplate.opsForValue().increment(dailyKey);
+        if (daily != null && daily == 1L) {
+            redisTemplate.expire(dailyKey, Duration.ofDays(1));
+        }
+        if (daily != null && daily > OTP_DAILY_SEND_LIMIT) {
+            throw new BizException(ResultCode.TOO_MANY_REQUESTS, "今日发送次数已达上限");
+        }
+        redisTemplate.opsForValue().set(cooldownKey, "1", OTP_SEND_COOLDOWN);
+    }
+
     @Override
     public void sendSmsCode(String phone) {
+        String today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
+        checkOtpSendRateLimit(
+                RedisKeys.format(RedisKeys.SMS_SEND_COOLDOWN, phone),
+                RedisKeys.format(RedisKeys.SMS_SEND_DAILY, phone, today));
         String code = String.format("%06d", RANDOM.nextInt(1_000_000));
         String key = RedisKeys.format(RedisKeys.SMS_CODE, phone);
         redisTemplate.opsForValue().set(key, code, Duration.ofMinutes(5));
@@ -623,6 +651,10 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public void sendEmailVerification(String email) {
+        String today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
+        checkOtpSendRateLimit(
+                RedisKeys.format(RedisKeys.EMAIL_SEND_COOLDOWN, email),
+                RedisKeys.format(RedisKeys.EMAIL_SEND_DAILY, email, today));
         String code = String.format("%06d", RANDOM.nextInt(1_000_000));
         String key = RedisKeys.format(RedisKeys.EMAIL_VERIFY, email);
         redisTemplate.opsForValue().set(key, code, Duration.ofMinutes(15));
