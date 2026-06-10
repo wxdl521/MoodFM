@@ -46,6 +46,7 @@ import { useUiStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
 import { useNotifications } from '@/composables/useNotifications'
 import { useNavDirection } from '@/composables/useNavDirection'
+import { useElectronBridge } from '@/composables/useElectronBridge'
 import NavBar from '@/components/common/NavBar.vue'
 import MiniPlayer from '@/components/common/MiniPlayer.vue'
 
@@ -54,6 +55,7 @@ const uiStore = useUiStore()
 const authStore = useAuthStore()
 const { notifications, connect, dismiss } = useNotifications()
 const { transitionName } = useNavDirection()
+useElectronBridge()
 
 // Global mini player visibility — opt-out via route meta
 const showMiniPlayer = computed(() => !route.meta.hideMiniPlayer)

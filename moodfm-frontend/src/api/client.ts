@@ -1,8 +1,9 @@
 import axios from 'axios';
 import { logger } from '@/utils/logger';
 
+const serverUrl = (window as any).__MOODFM_SERVER_URL || '';
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: serverUrl + '/api',
   timeout: 120000,
 });
 
@@ -64,7 +65,7 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const res = await axios.post('/api/auth/refresh', { refreshToken });
+        const res = await axios.post(serverUrl + '/api/auth/refresh', { refreshToken });
         const body = res.data;
         const data = (body && typeof body === 'object' && 'data' in body) ? body.data : body;
         const newAccessToken = data.accessToken;

@@ -1,0 +1,27 @@
+appId: com.moodfm.desktop
+productName: MoodFM
+directories:
+  output: release
+files:
+  - dist/**/*
+  - app/**/*
+  - assets/**/*
+  - "!node_modules/**/*"
+  - "node_modules/electron-store/**/*"
+  - "node_modules/electron-serve/**/*"
+  - "node_modules/is-electron/**/*"
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: assets/icon.ico
+  artifactName: "MoodFM-Setup-${version}.${ext}"
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: assets/icon.ico
+  uninstallerIcon: assets/icon.ico
+  installerHeaderIcon: assets/icon.ico
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: MoodFM

@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+docker-compose.dev.yml
 
 # Java / Maven
 target/

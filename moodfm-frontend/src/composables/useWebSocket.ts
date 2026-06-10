@@ -21,9 +21,13 @@ export function useWebSocket() {
     }
 
 
+    const serverUrl = (window as any).__MOODFM_SERVER_URL || '';
+    const wsBase = serverUrl
+      ? serverUrl.replace(/^http/, 'ws')
+      : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
     const brokerURL =
       (import.meta.env.VITE_WS_URL as string | undefined) ??
-      `ws://${window.location.host}/ws/radio`
+      `${wsBase}/ws/radio`
 
     client = new Client({
       brokerURL,

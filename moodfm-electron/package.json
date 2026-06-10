@@ -1,0 +1,25 @@
+{
+  "name": "moodfm-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "tsc && cross-env NODE_ENV=development electron .",
+    "build:frontend": "cd ../moodfm-frontend && npm run build",
+    "copy:frontend": "node scripts/copy-frontend.js",
+    "build:electron": "tsc && electron-builder --win",
+    "build": "npm run build:frontend && npm run copy:frontend && npm run build:electron",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "electron-serve": "^2.1.0",
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "cross-env": "^7.0.3",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "typescript": "^5.4.0"
+  }
+}

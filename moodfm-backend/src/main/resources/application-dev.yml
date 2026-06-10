@@ -1,8 +1,13 @@
 spring:
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:moodfm}?useUnicode=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3308}/${MYSQL_DATABASE:moodfm}?useUnicode=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
     username: moodfm
     password: ${MYSQL_PASSWORD:moodfm_dev_password}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6380}
+      password: ${REDIS_PASSWORD:b42e093f2e7834c5688053140f92b0197794c06201fdc5387d1aa460e633e6df}
   ai:
     openai:
       base-url: ${LLM_BASE_URL:https://api.deepseek.com}
@@ -28,6 +33,8 @@ app:
     secret: ${JWT_SECRET:}
   cookie-encryption:
     key: ${COOKIE_ENCRYPTION_KEY:}
+  music-adapter:
+    secret: ${ADAPTER_SECRET:dev-secret-123}
 
 # Qdrant 向量数据库（本地开发默认关闭，Docker 部署时开启）
 qdrant:

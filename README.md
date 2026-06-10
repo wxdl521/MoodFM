@@ -48,8 +48,8 @@ MoodFM 是一个基于“当下心情”生成私人音乐电台的全栈项目�
 ### AI 心情电台
 
 - 启动电台：`POST /api/radio/start`。
-- 支持后端 DTO 中的三类输入：
-  - `text`：自然语言心情描述。
+- 支持三类输入（前端字段 `moodText` 通过 `@JsonAlias` 兼容后端 `text`）：
+  - `text`（或 `moodText`）：自然语言心情描述。
   - `scene`：场景预设。
   - `valence` + `energy`：心情坐标。
 - Spring AI 根据 `src/main/resources/prompts/mood-analysis.txt` 生成结构化心情参数。
@@ -64,11 +64,11 @@ LLM 调用失败时，后端会使用默认心情参数兜底，保证主链路�
 
 - 前端播放器支持播放、暂停、上一首、下一首、进度条和当前队列展示。
 - 通过 Howler 加载真实音频 URL。
-- 后端已实现 WebSocket/STOMP 播放反馈入口：
-  - 连接端点：`/ws`
-  - 发送目的地：`/app/feedback`
-  - ack 订阅：`/user/queue/feedback-ack`
+- 播放反馈：
+  - REST 接口：`POST /api/radio/feedback`（单条）、`POST /api/radio/feedback/batch`（批量）。
+  - WebSocket/STOMP 通道：连接端点 `/ws`，发送目的地 `/app/feedback`，ack 订阅 `/user/queue/feedback-ack`。
 - 反馈事件会尝试写入 `feedback_events`，部分 completed/skip 事件会写入 `play_records`。
+- 获取历史会话：`GET /api/radio/sessions`。
 
 ### 数据洞察与日历
 
@@ -103,12 +103,6 @@ QQ 音乐的 liked/recommend/song-url 当前多为占位或不完整实现。
 
 以下内容在代码或 UI 中可能已经出现入口，但当前不应视为完整功能：
 
-- 前端首页调台时发送的文本和心情色盘字段与后端 DTO 不完全一致：
-  - 前端发送 `textInput/moodX/moodY`
-  - 后端接收 `text/valence/energy`
-  这会导致部分前端调台请求可能走默认心情兜底。
-- 前端 `radioApi.getSessions()` 请求 `GET /api/radio/sessions`，后端没有对应接口。
-- 前端 `radioApi.feedback()` 请求 `POST /api/radio/feedback`，后端没有 REST 反馈接口；真实反馈入口是 WebSocket `/app/feedback`。
 - Playlist 页面有 UI，但后端没有 playlist 相关接口。
 - 手机号验证码绑定接口未实现：
   - `POST /api/platforms/{platform}/phone/code`
@@ -118,7 +112,6 @@ QQ 音乐的 liked/recommend/song-url 当前多为占位或不完整实现。
 - Qdrant、embedding 向量召回、真正的语义相似度检索未实现。
 - AI 推荐解释目前主要基于候选歌名/艺人和心情参数，缺少歌曲特征库支撑。
 - WebSocket 播放反馈写入 `play_records` 时需关注数据库约束：`play_records.platform` 是 NOT NULL，但当前部分写入路径可能没有设置 platform。
-- Docker 全量启动时，前端容器内 Nginx 代理配置需要复核：当前后端端口是 `8081`，部分前端 Nginx 配置可能仍指向 `backend:8080`。
 - 年度报告、分享电台、移动端 App、语音输入、黑名单管理等仍属于未来规划。
 
 ## 项目结构
@@ -139,6 +132,9 @@ MoodFM/
 │     ├─ security/       # JwtAuthFilter / UserDetailsService
 │     ├─ service/        # 业务服务（PlayerService / MoodAnalysisService 等）
 │     └─ websocket/      # STOMP 反馈通道
+│  └─ src/main/resources/
+│     ├─ db/migration/   # Flyway 迁移脚本（V1~V4）
+│     └─ prompts/        # LLM 提示词模板
 ├─ moodfm-frontend/         # Vue/Vite 前端
 │  └─ src/
 │     ├─ api/             # Axios 封装 + 各模块 API 声明
@@ -151,7 +147,7 @@ MoodFM/
 │     ├─ utils/           # logger / platform 守卫等
 │     └─ views/           # 页面（含 admin/ 后台和 library/ 媒体库子页）
 ├─ moodfm-music-adapter/    # Node.js 音乐平台适配层
-├─ mysql/                   # MySQL 初始化脚本
+├─ mysql/                   # Docker 首次启动初始化脚本（后续 schema 由 Flyway 管理）
 ├─ Front-end styles/        # 样式模板 / 视觉参考
 ├─ docker-compose.yml
 └─ .env.example
@@ -171,11 +167,13 @@ cp .env.example .env
 |---|---|
 | `MYSQL_ROOT_PASSWORD` | MySQL root 密码 |
 | `MYSQL_USER` / `MYSQL_PASSWORD` | 应用数据库账号 |
+| `REDIS_PASSWORD` | Redis 密码，docker-compose 和后端均依赖此值 |
 | `JWT_SECRET` | JWT 签名密钥，建议使用长随机字符串 |
 | `COOKIE_ENCRYPTION_KEY` | Cookie 加密密钥，AES-256-GCM 需要 32 字节 Base64 |
-| `LLM_BASE_URL` | OpenAI 兼容 LLM 接口地址 |
+| `ADAPTER_SECRET` | 后端 → 音乐适配器的鉴权密钥 |
+| `LLM_BASE_URL` | OpenAI 兼容 LLM 接口地址，默认 `https://api.deepseek.com` |
 | `LLM_API_KEY` | LLM API Key |
-| `LLM_MODEL` | LLM 模型名 |
+| `LLM_MODEL` | LLM 模型名，默认 `deepseek-chat` |
 | `SPRING_PROFILES_ACTIVE` | Spring Profile，默认 `dev` |
 
 不要把真实 `.env` 提交到 Git。
@@ -195,11 +193,11 @@ docker compose up -d mysql redis music-adapter
 要求：
 
 - Java 21
-- Maven 3.6.3 或更高版本
+- Maven 3.6.3 或更高版本（推荐用项目自带的 `.tools/apache-maven-3.9.9/bin/mvn`，见下方「Maven 版本」）
 
 ```bash
 cd moodfm-backend
-mvn spring-boot:run
+../.tools/apache-maven-3.9.9/bin/mvn spring-boot:run
 ```
 
 后端地址：
@@ -242,13 +240,13 @@ docker compose up -d --build
 
 | 服务 | 地址 |
 |---|---|
-| 前端容器 | `http://localhost:5173` |
-| 后端 | `http://localhost:8081` |
-| 音乐适配器 | `http://localhost:3000` |
-| MySQL | `localhost:3306` |
-| Redis | `localhost:6379` |
+| 前端容器 | `http://localhost`（端口 80） |
+| 后端 | 由前端容器内 Nginx 反代，不直接暴露 |
+| 音乐适配器 | 不直接暴露 |
+| MySQL | 不直接暴露（仅 compose 内网可达） |
+| Redis | 不直接暴露（仅 compose 内网可达） |
 
-如果前端容器访问后端异常，优先检查 `moodfm-frontend/nginx.conf` 中代理目标端口是否与后端 `8081` 一致。
+生产模式下后端、适配器、MySQL、Redis 均不对外暴露端口，前端 Nginx 反代后端 `/api/` 路径。如需本地联调各服务端口，参考「本地启动」一节。
 
 ## 测试与验证
 
@@ -263,7 +261,7 @@ npm run build
 
 ```bash
 cd moodfm-backend
-mvn test
+../.tools/apache-maven-3.9.9/bin/mvn test
 ```
 
 注意：当前后端 `pom.xml` 配置 Java 21。本地如果仍是 Java 17，或者 Maven 低于 3.6.3，会在编译阶段失败。
