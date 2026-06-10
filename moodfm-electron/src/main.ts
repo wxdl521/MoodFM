@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   ipcMain,
   globalShortcut,
+  shell,
 } from 'electron';
 import path from 'path';
 import { loadStore } from './store';
@@ -40,6 +41,29 @@ async function createWindow() {
       sandbox: true,
       additionalArguments: [`--moodfm-server-url=${serverUrl}`],
     },
+  });
+
+  // Route external links to the system browser; block in-app navigation to outside origins.
+  // Only http/https are forwarded to the OS — never file://, data:, or custom schemes.
+  const openExternalIfSafe = (url: string) => {
+    try {
+      if (['http:', 'https:'].includes(new URL(url).protocol)) {
+        shell.openExternal(url);
+      }
+    } catch {
+      // malformed URL — drop silently
+    }
+  };
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    openExternalIfSafe(url);
+    return { action: 'deny' };
+  });
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const internalPrefix = isDev ? 'http://localhost:5173' : 'app://';
+    if (!url.startsWith(internalPrefix)) {
+      event.preventDefault();
+      openExternalIfSafe(url);
+    }
   });
 
   // Load the Vue SPA — dev server or bundled static files.
