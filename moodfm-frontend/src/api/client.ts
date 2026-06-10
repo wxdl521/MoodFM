@@ -28,15 +28,20 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// 后端统一返回 R<T> = { code, message, data? }。data 为 null 时被 @JsonInclude(NON_NULL)
+// 省略，因此必须按 code 判断成败，不能看有没有 data 字段。
+export function unwrapResponse(res: { data: unknown }) {
+  const body = res.data as Record<string, unknown> | null
+  if (body && typeof body === 'object' && !Array.isArray(body) && 'code' in body) {
+    if (body.code === 200) return (body as { data?: unknown }).data
+    return Promise.reject({ message: (body.message as string) || '请求失败', code: body.code })
+  }
+  return body
+}
+
 api.interceptors.response.use(
-  (res) => {
-    const body = res.data
-    if (body && typeof body === 'object' && 'code' in body) {
-      if ('data' in body) return body.data
-      return Promise.reject({ message: body.message || '请求失败', code: body.code })
-    }
-    return body
-  },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  unwrapResponse as any,
   async (err) => {
     const status = err.response?.status;
     const originalRequest = err.config;
