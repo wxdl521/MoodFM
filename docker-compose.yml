@@ -17,10 +17,10 @@ services:
     container_name: moodfm-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
       MYSQL_DATABASE: moodfm
       MYSQL_USER: ${MYSQL_USER:-moodfm}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-moodfm_dev_password}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
     volumes:
       - mysql_data:/var/lib/mysql
       - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -69,22 +69,26 @@ services:
       music-adapter:
         condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
       MYSQL_DATABASE: moodfm
       MYSQL_USER: ${MYSQL_USER:-moodfm}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-moodfm_dev_password}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       MUSIC_ADAPTER_URL: http://music-adapter:3000
-      ADAPTER_SECRET: ${ADAPTER_SECRET}
-      JWT_SECRET: ${JWT_SECRET}
-      COOKIE_ENCRYPTION_KEY: ${COOKIE_ENCRYPTION_KEY}
+      ADAPTER_SECRET: ${ADAPTER_SECRET:?ADAPTER_SECRET is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      COOKIE_ENCRYPTION_KEY: ${COOKIE_ENCRYPTION_KEY:?COOKIE_ENCRYPTION_KEY is required}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
-      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_API_KEY: ${LLM_API_KEY:?LLM_API_KEY is required}
       LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+      UPLOAD_DIR: /app/uploads
+      QDRANT_ENABLED: "false"   # compose 里没有 qdrant 服务，显式关闭避免每次召回都连接失败
+    volumes:
+      - moodfm_uploads:/app/uploads
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8081/api/health"]
       interval: 20s
@@ -105,3 +109,4 @@ services:
 volumes:
   mysql_data:
   redis_data:
+  moodfm_uploads:
