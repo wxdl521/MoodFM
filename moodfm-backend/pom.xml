@@ -64,12 +64,6 @@
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
-        <!-- WebSocket (STOMP) -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-websocket</artifactId>
-        </dependency>
-
         <!-- Cache (Caffeine) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
