@@ -59,8 +59,24 @@ class AuthControllerTest {
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
+                .andExpect(status().isLocked())
                 .andExpect(jsonPath("$.code").value(ResultCode.ACCOUNT_LOCKED.getCode()))
                 .andExpect(jsonPath("$.message").value(ResultCode.ACCOUNT_LOCKED.getMessage()));
+    }
+
+    @Test
+    void loginWrongPasswordReturns400WithBizCode() throws Exception {
+        LoginRequest request = new LoginRequest();
+        request.setAccount("user@example.com");
+        request.setPassword("wrong-password-1");
+
+        when(userService.login(any(LoginRequest.class)))
+                .thenThrow(new BizException(ResultCode.WRONG_PASSWORD));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ResultCode.WRONG_PASSWORD.getCode()));
     }
 }

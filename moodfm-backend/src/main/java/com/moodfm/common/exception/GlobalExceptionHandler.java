@@ -23,15 +23,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BizException.class)
     public R<Void> handleBizException(BizException e, HttpServletResponse response) {
-        int httpStatus = switch (e.getCode()) {
-            case 400 -> 400;
-            case 401 -> 401;
-            case 403 -> 403;
-            case 404 -> 404;
-            case 429 -> 429;
-            default  -> 500;
-        };
-        response.setStatus(httpStatus);
+        response.setStatus(e.getHttpStatus().value());
         return R.fail(e.getCode(), e.getMessage());
     }
 
@@ -53,14 +45,15 @@ public class GlobalExceptionHandler {
         return R.fail(ResultCode.BAD_REQUEST, message);
     }
 
+    // 凭证错误映射 400（而非 401）：401 专用于 token 失效→前端刷新流程，登录失败用 401 会误触发刷新
     @ExceptionHandler(BadCredentialsException.class)
-    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
     public R<Void> handleBadCredentials(BadCredentialsException e) {
         return R.fail(ResultCode.WRONG_PASSWORD);
     }
 
     @ExceptionHandler(LockedException.class)
-    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    @ResponseStatus(HttpStatus.LOCKED)
     public R<Void> handleLocked(LockedException e) {
         return R.fail(ResultCode.ACCOUNT_LOCKED);
     }
