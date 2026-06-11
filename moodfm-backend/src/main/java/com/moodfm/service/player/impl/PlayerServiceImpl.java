@@ -106,13 +106,14 @@ public class PlayerServiceImpl implements PlayerService {
         sessionMapper.insert(session);
 
         // 2.5 存储会话时长 TTL
-        // durationMinutes == null  → "无限"，不设置过期时间（保留 marker 让 isSessionExpired 返回 false）
+        // durationMinutes == null  → "无限"，封顶 24h TTL（保留 marker，让 isSessionExpired 在 24h 内返回 false）
         // durationMinutes != null  → 设置对应秒数的 TTL
         String ttlKey = RedisKeys.format(RedisKeys.SESSION_TTL, session.getId());
         Integer durationMinutes = request.getDurationMinutes();
         if (durationMinutes == null) {
-            // 无限时长：写入 marker，不设置 TTL
-            redisTemplate.opsForValue().set(ttlKey, "infinite");
+            // 无限时长：marker 封顶 24 小时，避免 Redis 中永不过期的 key 无限堆积。
+            // 行为变化：连续播放超过 24h 的会话会被判定过期，需重新开台（可接受）。
+            redisTemplate.opsForValue().set(ttlKey, "infinite", Duration.ofHours(24));
         } else {
             redisTemplate.opsForValue().set(ttlKey, String.valueOf(durationMinutes * 60), Duration.ofSeconds(durationMinutes * 60L));
         }

@@ -191,7 +191,7 @@ class PlayerServiceImplTest {
     //    global blacklist filter, durationMinutes==null path.
     // ========================================================================
     @Test
-    void startRadio_durationNull_writesInfiniteMarkerWithoutTtl() throws Exception {
+    void startRadio_durationNull_writesInfiniteMarkerWith24hTtl() throws Exception {
         // --- AI mood analysis ---
         when(moodAnalysisService.analyze(any())).thenReturn(MoodParams.defaultParams());
 
@@ -241,11 +241,11 @@ class PlayerServiceImplTest {
         assertTrue(result.getSongs().isEmpty(), "expected empty queue when all recall paths are empty");
         assertEquals(0, result.getTotalCount());
 
-        // Infinite marker is written without TTL (no Duration overload)
+        // Infinite marker is written with a 24-hour cap TTL
         String ttlKey = RedisKeys.format(RedisKeys.SESSION_TTL, 1234L);
-        verify(valueOps).set(ttlKey, "infinite");
-        // The overload with Duration must NOT be called for the infinite path
-        verify(valueOps, never()).set(eq(ttlKey), anyString(), any(Duration.class));
+        verify(valueOps).set(ttlKey, "infinite", Duration.ofHours(24));
+        // The no-TTL overload must NOT be called for the infinite path
+        verify(valueOps, never()).set(eq(ttlKey), anyString());
 
         // Empty queue → delete branch (NOT rightPushAll) — verify no transactional set up
         verify(redisTemplate, never()).execute(any(SessionCallback.class));
