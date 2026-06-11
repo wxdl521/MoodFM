@@ -7,7 +7,7 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6380}
-      password: ${REDIS_PASSWORD:b42e093f2e7834c5688053140f92b0197794c06201fdc5387d1aa460e633e6df}
+      password: ${REDIS_PASSWORD:}   # 真实值放 IDE 运行配置 / 本地环境变量，勿写进 git
   ai:
     openai:
       base-url: ${LLM_BASE_URL:https://api.deepseek.com}
