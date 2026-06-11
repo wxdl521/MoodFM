@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -87,6 +88,7 @@ public class AdminController {
     }
 
     @Operation(summary = "启用/禁用用户")
+    @CacheEvict(value = "userDetails", key = "#id.toString()")
     @PutMapping("/users/{id}/status")
     public R<Void> setUserStatus(
             @PathVariable Long id,
@@ -103,6 +105,7 @@ public class AdminController {
     }
 
     @Operation(summary = "分配/修改用户角色")
+    @CacheEvict(value = "userDetails", key = "#id.toString()")
     @PutMapping("/users/{id}/role")
     public R<Void> setUserRole(
             @PathVariable Long id,

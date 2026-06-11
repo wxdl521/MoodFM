@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.moodfm.domain.entity.User;
 import com.moodfm.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -19,6 +20,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     private final UserMapper userMapper;
 
     @Override
+    @Cacheable(value = "userDetails", key = "#account")
     public UserDetails loadUserByUsername(String account) throws UsernameNotFoundException {
         User user;
         // JwtAuthFilter 传入的是 userId（纯数字字符串），登录时传入的是 email/phone

@@ -25,6 +25,10 @@ public class CacheConfig {
                             .maximumSize(10_000)
                             .expireAfterWrite(24, TimeUnit.HOURS)
                             .build();
+                    case "userDetails" -> Caffeine.newBuilder()
+                            .maximumSize(10_000)
+                            .expireAfterWrite(2, TimeUnit.MINUTES)
+                            .build();
                     default -> // "users" and others: 10 min TTL
                             Caffeine.newBuilder()
                             .maximumSize(10_000)
