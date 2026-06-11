@@ -6,6 +6,7 @@ import com.moodfm.mapper.UserMapper;
 import com.moodfm.mapper.UserProfileMapper;
 import com.moodfm.domain.vo.UserVO;
 import com.moodfm.common.util.JwtUtil;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,6 +19,8 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
 
+// Integration test: needs a live MySQL + Redis (and seeded data); excluded from CI via -DexcludedGroups=integration. Run locally against a populated dev DB.
+@Tag("integration")
 @SpringBootTest
 @ExtendWith(SpringExtension.class)
 class UserServiceCacheTest {

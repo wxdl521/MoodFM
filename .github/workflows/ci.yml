@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    env:
+      # JwtUtil.validateSecret() requires a non-blank secret >= 32 bytes at context load.
+      # Integration tests that need a live MySQL/Redis (and seeded data) are tagged
+      # @Tag("integration") and excluded here; they run locally against a populated dev DB.
+      JWT_SECRET: moodfm-ci-jwt-secret-not-for-production-0123456789
+      COOKIE_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      ADAPTER_SECRET: ci-dummy-adapter-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Run backend unit tests (integration tests excluded)
+        run: mvn -B -f moodfm-backend/pom.xml test -DexcludedGroups=integration
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: moodfm-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: moodfm-frontend/package-lock.json
+      - run: npm ci
+      - run: npm run type-check
+      - run: npm test
+      - run: npm run build
