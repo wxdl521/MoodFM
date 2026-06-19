@@ -2,11 +2,12 @@
 
 MoodFM 是一个基于“当下心情”生成私人音乐电台的全栈项目。用户可以绑定音乐平台账号，输入自然语言心情、场景或心情坐标，由后端通过 Spring AI 生成心情参数，再召回候选歌曲、重排队列并返回可播放电台。
 
-当前仓库包含三部分：
+当前仓库包含四部分：
 
 - `moodfm-backend`：Spring Boot 3 后端，负责认证、平台绑定、AI 电台、播放队列、数据洞察和周报。
 - `moodfm-frontend`：Vue + Vite 前端，包含登录、引导、绑定、首页、电台播放器、洞察、日历、周报页面。
 - `moodfm-music-adapter`：Node.js 音乐平台适配层，封装网易云音乐和 QQ 音乐相关接口。
+- `moodfm-electron`：Electron 桌面壳，复用前端页面，提供托盘、媒体键、任务栏缩略图等桌面集成（详见「桌面客户端」一节）。
 
 `Front-end styles/` 只是样式模板和视觉参考，不是当前运行应用的主代码。
 
@@ -14,11 +15,12 @@ MoodFM 是一个基于“当下心情”生成私人音乐电台的全栈项目�
 
 | 模块 | 技术 |
 |---|---|
-| 后端 | Java 21, Spring Boot 3.3.6, Spring Security, JWT, Spring AI, MyBatis-Plus, WebSocket/STOMP |
-| 前端 | Vue 3, Vite, Vue Router, Pinia, Axios, Howler, html2canvas |
+| 后端 | Java 21, Spring Boot 3.3.6, Spring Security, JWT, Spring AI, MyBatis-Plus, Flyway, Caffeine, Qdrant 客户端 |
+| 前端 | Vue 3, Vite, Vue Router, Pinia, Axios, Howler, ECharts, html2canvas, Vitest |
+| 桌面壳 | Electron 33, electron-builder, TypeScript, electron-store |
 | 音乐适配器 | Node.js 18+, Express, NeteaseCloudMusicApi, Axios |
-| 数据与缓存 | MySQL 8, Redis 7 |
-| 部署 | Docker Compose |
+| 数据与缓存 | MySQL 8, Redis 7, Qdrant（向量检索，默认关闭） |
+| 部署 / CI | Docker Compose, GitHub Actions |
 
 ## 已实现功能
 
@@ -30,6 +32,8 @@ MoodFM 是一个基于“当下心情”生成私人音乐电台的全栈项目�
 - Access Token 黑名单机制。
 - 获取当前用户信息：`GET /api/users/me`。
 - 保存用户偏好：`PUT /api/users/preferences`。
+- 账号注销（逻辑删除）与封禁是相互独立的状态：`status` 表示管理员封禁（可恢复），`deleted` 表示已注销（`@TableLogic` 逻辑删除）。封禁用户登录返回 `ACCOUNT_DISABLED`。
+- 验证码发送限流：短信/邮箱发送接口为匿名接口，加了 60s 冷却 + 每个目标每日上限，避免轰炸与费用风险。
 
 当前偏好保存主要覆盖 `genres` 和 `languages`，前端引导里的 `defaultScene` 暂未完整入库。
 
@@ -57,6 +61,7 @@ MoodFM 是一个基于“当下心情”生成私人音乐电台的全栈项目�
 - 使用 `song-ranking.txt` 对候选歌曲重排并生成推荐理由。
 - 队列写入 Redis，支持下一批歌曲：`GET /api/radio/next`。
 - 获取播放地址：`GET /api/radio/url`。
+- 基于某首歌启动同款电台：`POST /api/radio/start-from-song`。
 
 LLM 调用失败时，后端会使用默认心情参数兜底，保证主链路尽量可用。
 
@@ -64,11 +69,9 @@ LLM 调用失败时，后端会使用默认心情参数兜底，保证主链路�
 
 - 前端播放器支持播放、暂停、上一首、下一首、进度条和当前队列展示。
 - 通过 Howler 加载真实音频 URL。
-- 播放反馈：
-  - REST 接口：`POST /api/radio/feedback`（单条）、`POST /api/radio/feedback/batch`（批量）。
-  - WebSocket/STOMP 通道：连接端点 `/ws`，发送目的地 `/app/feedback`，ack 订阅 `/user/queue/feedback-ack`。
-- 反馈事件会尝试写入 `feedback_events`，部分 completed/skip 事件会写入 `play_records`。
-- 获取历史会话：`GET /api/radio/sessions`。
+- 播放反馈（REST）：`POST /api/radio/feedback`（单条）、`POST /api/radio/feedback/batch`（批量）。
+- 反馈事件会尝试写入 `feedback_events`，部分 completed/skip 事件会写入 `play_records`；命中条件时后端会对当前会话队列做动态重排。
+- 获取历史会话（断点续播用）：`GET /api/radio/sessions`。
 
 ### 数据洞察与日历
 
@@ -91,6 +94,55 @@ LLM 调用失败时，后端会使用默认心情参数兜底，保证主链路�
 
 周报生成需要上周有播放记录；无数据时返回业务错误。
 
+### 搜索
+
+- 统一搜索入口：`GET /api/search?q=&mode=&limit=`。
+- 两种模式：`mode=keyword` 关键词精确搜索（转发到绑定平台），`mode=mood` 心情语义搜索（基于 Qdrant 向量检索）。
+- `limit` 上限 50；`mode` 只接受 `keyword` / `mood`。
+
+`mood` 模式依赖 Qdrant 与歌曲向量数据，本地与默认 compose 下 Qdrant 关闭时该模式不可用。
+
+### 歌单与智能歌单
+
+- 我的歌单列表：`GET /api/playlists`。
+- 歌单详情：`GET /api/playlists/{id}`。
+- 智能歌单列表：`GET /api/playlists/smart`。
+- 智能歌单详情：`GET /api/playlists/smart/{type}`。
+- 智能歌单由后端按收听数据动态生成，无需用户手动维护。
+
+`POST /api/radio/play-from-playlist` 目前仍是占位实现，尚未真正把歌单接入电台队列。
+
+### 歌曲、喜欢与歌词
+
+- 我喜欢的歌曲：`GET /api/songs/liked`。
+- 是否已喜欢：`GET /api/songs/{id}/liked`；切换喜欢：`POST /api/songs/{id}/like`。
+- 歌曲详情：`GET /api/songs/{id}`；相似歌曲：`GET /api/songs/{id}/similar`。
+- 歌词：`GET /api/songs/{id}/lyrics`。
+- 单曲播放地址：`GET /api/songs/{id}/audio-url`；批量地址：`POST /api/songs/batch-audio-urls`。
+
+### 播放历史与数据导出
+
+- 播放历史分页：`GET /api/history`；清空历史：`DELETE /api/history/all`。
+- 导出收听数据：`GET /api/export/json`、`GET /api/export/csv`。
+
+### 屏蔽（用户黑名单）
+
+- 查看屏蔽列表：`GET /api/user/blacklist`。
+- 添加屏蔽（歌曲 / 艺人）：`POST /api/user/blacklist`。
+- 移除屏蔽：`DELETE /api/user/blacklist/{id}`。
+- 被屏蔽的歌曲 / 艺人会在电台召回与重排阶段被过滤。
+
+### 后台管理
+
+`/api/admin/**` 全部由 `ROLE_ADMIN` 守卫（Spring Security），前端在 `views/admin/` 提供对应页面：
+
+- 概览统计与近期活跃：`GET /api/admin/stats`、`GET /api/admin/dashboard/activity`、`GET /api/admin/users/recent`。
+- 用户管理：`GET /api/admin/users`、`PUT /api/admin/users/{id}/status`（封禁 / 解封）、`PUT /api/admin/users/{id}/role`。
+- 数据分析：`GET /api/admin/analytics/{genre|platform|top-songs|mood}`。
+- 系统配置：特性开关 `/api/admin/config/flags`、键值配置 `/api/admin/config/kv`、AI 权重与提示词 `/api/admin/config/ai-weights`、`/api/admin/config/ai-prompt`。
+- 内容运营：全局黑名单 `/api/admin/blacklist`、系统通知 `/api/admin/notifications`、审计日志 `/api/admin/audit-log`。
+- 平台与场景：平台统计 / Cookie 过期 `/api/admin/platforms/*`、场景模板 `/api/admin/scenes`。
+
 ### 音乐适配器
 
 - 健康检查：`GET /health`。
@@ -103,16 +155,16 @@ QQ 音乐的 liked/recommend/song-url 当前多为占位或不完整实现。
 
 以下内容在代码或 UI 中可能已经出现入口，但当前不应视为完整功能：
 
-- Playlist 页面有 UI，但后端没有 playlist 相关接口。
+- 从歌单启动电台 `POST /api/radio/play-from-playlist` 仍是占位实现。
 - 手机号验证码绑定接口未实现：
   - `POST /api/platforms/{platform}/phone/code`
   - `POST /api/platforms/{platform}/bind/phone`
 - QQ 音乐适配器能力不完整。
 - Spotify、YouTube Music、Bilibili 等平台未接入。
-- Qdrant、embedding 向量召回、真正的语义相似度检索未实现。
-- AI 推荐解释目前主要基于候选歌名/艺人和心情参数，缺少歌曲特征库支撑。
-- WebSocket 播放反馈写入 `play_records` 时需关注数据库约束：`play_records.platform` 是 NOT NULL，但当前部分写入路径可能没有设置 platform。
-- 年度报告、分享电台、移动端 App、语音输入、黑名单管理等仍属于未来规划。
+- Qdrant 向量检索已接入代码（`mode=mood` 搜索、相似召回），但默认 compose 没有 qdrant 服务、`QDRANT_ENABLED=false`，需自行部署 Qdrant 并灌入歌曲向量后才真正可用。
+- AI 推荐解释目前主要基于候选歌名/艺人和心情参数，缺少完整歌曲特征库支撑。
+- 写入 `play_records` 时需注意 `play_records.platform` 为 NOT NULL，部分写入路径需确保已设置 platform。
+- 年度报告、分享电台、移动端 App、语音输入等仍属于未来规划。
 
 ## 项目结构
 
@@ -130,23 +182,23 @@ MoodFM/
 │     ├─ mapper/         # MyBatis-Plus Mapper 接口
 │     ├─ scheduler/      # 周报定时任务
 │     ├─ security/       # JwtAuthFilter / UserDetailsService
-│     ├─ service/        # 业务服务（PlayerService / MoodAnalysisService 等）
-│     └─ websocket/      # STOMP 反馈通道
+│     └─ service/        # 业务服务（PlayerService / MoodAnalysisService / SearchService 等）
 │  └─ src/main/resources/
-│     ├─ db/migration/   # Flyway 迁移脚本（V1~V4）
+│     ├─ db/migration/   # Flyway 迁移脚本（当前到 V5）
 │     └─ prompts/        # LLM 提示词模板
 ├─ moodfm-frontend/         # Vue/Vite 前端
 │  └─ src/
 │     ├─ api/             # Axios 封装 + 各模块 API 声明
 │     ├─ assets/          # 静态资源、全局样式
 │     ├─ components/      # 通用 UI 组件
-│     ├─ composables/     # useAudioPlayer / useWebSocket 等
+│     ├─ composables/     # useAudioPlayer / useElectronBridge / useNavDirection 等
 │     ├─ router/          # 路由 + meta（depth / hideMiniPlayer 等）
 │     ├─ stores/          # Pinia store
 │     ├─ types/           # TS 类型（Song / SongVO / Window 全局增强等）
 │     ├─ utils/           # logger / platform 守卫等
 │     └─ views/           # 页面（含 admin/ 后台和 library/ 媒体库子页）
 ├─ moodfm-music-adapter/    # Node.js 音乐平台适配层
+├─ moodfm-electron/         # Electron 桌面壳（main / preload / tray / taskbar / updater / store）
 ├─ mysql/                   # Docker 首次启动初始化脚本（后续 schema 由 Flyway 管理）
 ├─ Front-end styles/        # 样式模板 / 视觉参考
 ├─ docker-compose.yml
@@ -247,6 +299,34 @@ docker compose up -d --build
 | Redis | 不直接暴露（仅 compose 内网可达） |
 
 生产模式下后端、适配器、MySQL、Redis 均不对外暴露端口，前端 Nginx 反代后端 `/api/` 路径。如需本地联调各服务端口，参考「本地启动」一节。
+
+## 桌面客户端
+
+`moodfm-electron` 复用前端构建产物，套上 Electron 壳提供桌面集成：
+
+- 系统托盘菜单（`tray.ts`）。
+- 全局媒体键（播放 / 暂停 / 上一首 / 下一首，`main.ts` 注册 `globalShortcut`）。
+- 任务栏缩略图工具栏按钮与覆盖图标（`taskbar.ts`）。
+- 服务器地址用 `electron-store` 持久化（`store.ts`），主进程经 `additionalArguments` 注入到 preload。
+- 外部链接走系统浏览器、阻止窗口内导航，渲染进程开启 sandbox。
+- 自动更新（`updater.ts`）。
+
+开发调试（需要本地已起好后端/前端 dev server 或指向线上服务）：
+
+```bash
+cd moodfm-electron
+npm install
+npm run dev          # tsc 编译 + 以 development 模式启动 electron
+```
+
+打包 Windows 安装包：
+
+```bash
+cd moodfm-electron
+npm run build        # 构建前端 → 拷贝产物 → electron-builder --win
+```
+
+产物输出在 `moodfm-electron/release/`。
 
 ## 测试与验证
 
