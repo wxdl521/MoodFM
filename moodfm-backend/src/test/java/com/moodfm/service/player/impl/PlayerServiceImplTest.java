@@ -26,6 +26,7 @@ import com.moodfm.service.enrich.SongFeatureService;
 import com.moodfm.service.platform.PlatformBindingService;
 import com.moodfm.service.user.UserService;
 import com.moodfm.service.vector.QdrantService;
+import com.moodfm.service.vector.VectorRecallMetrics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -90,6 +91,7 @@ class PlayerServiceImplTest {
     @Mock private LlmFallbackMetrics llmFallbackMetrics;
     @Mock private EmbeddingService embeddingService;
     @Mock private QdrantService qdrantService;
+    @Mock private VectorRecallMetrics vectorRecallMetrics;
     @Mock private GlobalBlacklistMapper globalBlacklistMapper;
     @Mock private SongFeatureService songFeatureService;
 

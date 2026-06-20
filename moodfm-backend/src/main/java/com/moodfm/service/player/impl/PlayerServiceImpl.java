@@ -26,6 +26,7 @@ import com.moodfm.service.platform.PlatformBindingService;
 import com.moodfm.service.player.PlayerService;
 import com.moodfm.service.user.UserService;
 import com.moodfm.service.vector.QdrantService;
+import com.moodfm.service.vector.VectorRecallMetrics;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -66,6 +67,7 @@ public class PlayerServiceImpl implements PlayerService {
     private final LlmFallbackMetrics llmFallbackMetrics;
     private final EmbeddingService embeddingService;
     private final QdrantService qdrantService;
+    private final VectorRecallMetrics vectorRecallMetrics;
     private final GlobalBlacklistMapper globalBlacklistMapper;
     private final SongFeatureService songFeatureService;
 
@@ -1024,8 +1026,8 @@ public class PlayerServiceImpl implements PlayerService {
             if (existingSongId != null) {
                 try {
                     vo.setId(existingSongId);
-                    // Keep original behavior: still index into Qdrant for already-known songs.
-                    indexSongForVectorSearch(existingSongId, vo.getTitle(), vo.getArtist(), vo.getAlbum());
+                    // Re-index into Qdrant using features (may be null for old songs — skip is acceptable).
+                    indexSongForVectorSearch(existingSongId, vo.getFeatures());
                 } catch (Exception e) {
                     log.warn("Failed to re-index existing song {}: {} - {}", existingSongId, vo.getTitle(), vo.getArtist(), e);
                 }
@@ -1083,6 +1085,7 @@ public class PlayerServiceImpl implements PlayerService {
                     Song existing = existingByKey.get(key);
 
                     Long songId;
+                    String newFeaturesJson = null; // populated only for truly-new songs
                     if (existing != null) {
                         songId = existing.getId();
                     } else {
@@ -1094,16 +1097,15 @@ public class PlayerServiceImpl implements PlayerService {
                         song.setCoverUrl(vo.getCoverUrl());
                         // Set features: use enrich result if done, else local non-blocking fallback
                         CompletableFuture<String> fut = enrichFutures.get(key);
-                        String featuresJson;
                         if (fut != null && fut.isDone() && !fut.isCompletedExceptionally()) {
-                            featuresJson = fut.get();
+                            newFeaturesJson = fut.get();
                         } else {
                             // Future is null, still running, or completed exceptionally —
                             // use non-blocking local fallback (no LLM call, no metric increment)
-                            featuresJson = songFeatureService.fallbackFeatures(
+                            newFeaturesJson = songFeatureService.fallbackFeatures(
                                     vo.getTitle(), vo.getArtist(), vo.getAlbum());
                         }
-                        song.setFeatures(featuresJson);
+                        song.setFeatures(newFeaturesJson);
                         songMapper.insert(song);
                         songId = song.getId();
                         newSongsById.put(songId, vo);
@@ -1112,8 +1114,11 @@ public class PlayerServiceImpl implements PlayerService {
                     // all downstream references (feedback, liked, history) use the correct key.
                     vo.setId(songId);
 
-                    // Auto-index into Qdrant for future vector recall
-                    indexSongForVectorSearch(songId, vo.getTitle(), vo.getArtist(), vo.getAlbum());
+                    // Auto-index into Qdrant using features aligned with query-side embeddings.
+                    // existing-by-title branch: use DB features (may be null → skip accepted).
+                    // new-song branch: use freshly-computed featuresJson.
+                    String featuresToIndex = (existing != null) ? existing.getFeatures() : newFeaturesJson;
+                    indexSongForVectorSearch(songId, featuresToIndex);
                 } catch (Exception e) {
                     log.warn("Failed to persist song: {} - {}", vo.getTitle(), vo.getArtist(), e);
                 }
@@ -1260,32 +1265,125 @@ public class PlayerServiceImpl implements PlayerService {
             // Batch convert with single mapping query (no N+1)
             return songsToVOs(new ArrayList<>(songMap.values()));
         } catch (Exception e) {
-            log.debug("Vector recall skipped: {}", e.getMessage());
+            log.warn("Vector recall failed: {}", e.getMessage());
+            vectorRecallMetrics.recallFailure();
             return List.of();
         }
     }
 
     /**
-     * Index a song into Qdrant for vector-based recall.
-     * Generates an embedding from title + artist + album and upserts it.
-     * Wrapped in try-catch — failure here does not affect song persistence.
+     * Build the song-side embedding text from a features JSON.
+     * The resulting text is structurally aligned with the query-side {@link #buildVectorQueryText}:
+     * both use genre + mood/vibe words + energy-level word + language word in Chinese.
+     * <p>
+     * Format: {@code "华语流行 夜晚 松弛 低能量 中文"}
+     * <p>
+     * Returns empty string when features are null/blank/unparseable — callers must
+     * skip indexing in that case (do NOT fall back to song-name text).
+     * <p>
+     * Package-visible for unit testing.
      */
-    private void indexSongForVectorSearch(Long songId, String title, String artist, String album) {
+    String buildSongEmbeddingText(String featuresJson) {
+        if (featuresJson == null || featuresJson.isBlank()) return "";
         try {
-            String text = ((title != null ? title : "") + " " + (artist != null ? artist : "")
-                    + " " + (album != null ? album : "")).trim();
-            if (text.isEmpty()) return;
+            JsonNode node = objectMapper.readTree(featuresJson);
+
+            StringBuilder sb = new StringBuilder();
+
+            // genre
+            String genre = node.path("genre").asText(null);
+            if (genre != null && !genre.isBlank()) {
+                sb.append(genre).append(" ");
+            }
+
+            // mood_tags (array of strings)
+            JsonNode tagsNode = node.path("mood_tags");
+            if (tagsNode.isArray()) {
+                for (JsonNode tag : tagsNode) {
+                    String t = tag.asText("").trim();
+                    if (!t.isEmpty()) sb.append(t).append(" ");
+                }
+            }
+
+            // energy-level word derived from energy value (0‥1) or tempo_bucket
+            String energyWord = resolveEnergyWord(node);
+            if (energyWord != null) sb.append(energyWord).append(" ");
+
+            // language word
+            String langWord = resolveLanguageWord(node.path("language").asText(null));
+            if (langWord != null) sb.append(langWord).append(" ");
+
+            return sb.toString().trim();
+        } catch (Exception e) {
+            log.debug("buildSongEmbeddingText parse failed, skipping index: {}", e.getMessage());
+            return "";
+        }
+    }
+
+    /**
+     * Derive an energy-level Chinese word from features.
+     * Uses the numeric {@code energy} field if present; falls back to {@code tempo_bucket}.
+     */
+    private String resolveEnergyWord(JsonNode node) {
+        // Try numeric energy first (0..1 scale)
+        JsonNode energyNode = node.path("energy");
+        if (!energyNode.isMissingNode() && energyNode.isNumber()) {
+            double energy = energyNode.asDouble();
+            if (energy >= 0.7) return "高能量";
+            if (energy >= 0.4) return "中能量";
+            return "低能量";
+        }
+        // Fallback: tempo_bucket
+        String bucket = node.path("tempo_bucket").asText(null);
+        if (bucket == null || bucket.isBlank()) return null;
+        return switch (bucket.toLowerCase()) {
+            case "high", "fast" -> "高能量";
+            case "low", "slow" -> "低能量";
+            default -> "中能量"; // mid, moderate, etc.
+        };
+    }
+
+    /**
+     * Map a language code to a Chinese language word.
+     */
+    private String resolveLanguageWord(String lang) {
+        if (lang == null || lang.isBlank()) return null;
+        return switch (lang.toLowerCase()) {
+            case "zh", "zh-cn", "zh-tw" -> "中文";
+            case "en" -> "英文";
+            case "ja" -> "日文";
+            case "ko" -> "韩文";
+            case "instrumental" -> "器乐";
+            default -> null;
+        };
+    }
+
+    /**
+     * Index a song into Qdrant for vector-based recall.
+     * Generates an embedding from the song's emotion/features description text
+     * (structurally aligned with the query side) and upserts it.
+     * <p>
+     * If {@code featuresJson} is null/blank/unparseable (i.e. {@link #buildSongEmbeddingText}
+     * returns empty), indexing is skipped — we never fall back to song-name text.
+     * Wrapped in try-catch — failure here does not affect song persistence.
+     *
+     * @param songId      the DB song ID
+     * @param featuresJson the Task 2 features JSON (genre/mood_tags/energy/language/…)
+     */
+    private void indexSongForVectorSearch(Long songId, String featuresJson) {
+        try {
+            String text = buildSongEmbeddingText(featuresJson);
+            if (text.isEmpty()) return; // no features → skip, do NOT index song-name text
 
             float[] embedding = embeddingService.embed(text);
 
             Map<String, Object> metadata = new HashMap<>();
             metadata.put("songId", songId);
-            if (title != null) metadata.put("title", title);
-            if (artist != null) metadata.put("artist", artist);
 
             qdrantService.upsertSong(songId, embedding, metadata);
         } catch (Exception e) {
-            log.debug("Vector indexing skipped for song {}: {}", songId, e.getMessage());
+            log.warn("Vector indexing failed for song {}: {}", songId, e.getMessage());
+            vectorRecallMetrics.indexFailure();
         }
     }
 

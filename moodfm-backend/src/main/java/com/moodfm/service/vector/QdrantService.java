@@ -1,9 +1,9 @@
 package com.moodfm.service.vector;
 
+import com.moodfm.service.embedding.EmbeddingService;
 import io.qdrant.client.QdrantClient;
 import io.qdrant.client.grpc.Collections.Distance;
 import io.qdrant.client.grpc.Collections.VectorParams;
-import io.qdrant.client.grpc.JsonWithInt.Value;
 import io.qdrant.client.grpc.Points.Filter;
 import io.qdrant.client.grpc.Points.PointId;
 import io.qdrant.client.grpc.Points.PointStruct;
@@ -15,6 +15,7 @@ import io.qdrant.client.grpc.Points.WithPayloadSelector;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -31,9 +32,16 @@ public class QdrantService {
     @Autowired(required = false)
     private QdrantClient qdrantClient;
 
+    /** EmbeddingService injected for startup dimension validation (only used when Qdrant is enabled). */
+    @Autowired
+    private EmbeddingService embeddingService;
+
     private static final String COLLECTION = "songs";
-    private static final int VECTOR_DIM = 2048;
     private static final int SEARCH_DEFAULT_LIMIT = 20;
+
+    /** Configurable embedding dimension; default 2048 to preserve existing behavior. */
+    @Value("${embedding.dim:2048}")
+    private int vectorDim;
 
     @PostConstruct
     public void init() {
@@ -42,7 +50,22 @@ public class QdrantService {
             return;
         }
         try {
+            // Startup dimension validation: probe actual embedding output vs configured dim.
+            // Only runs when Qdrant is enabled to avoid spurious API calls in disabled mode.
+            int actual = embeddingService.embed("维度校验探针").length;
+            if (actual != vectorDim) {
+                log.error(
+                        "Embedding dimension mismatch: configured embedding.dim={} but actual model output dim={}. " +
+                        "Update embedding.dim to {} or switch to a {}-dim model.",
+                        vectorDim, actual, actual, vectorDim);
+                throw new IllegalStateException(
+                        "Embedding dimension mismatch: configured=" + vectorDim + ", actual=" + actual);
+            }
+            log.info("Embedding dimension validated: dim={}", vectorDim);
+
             ensureCollection();
+        } catch (IllegalStateException e) {
+            throw e; // re-throw fail-fast error
         } catch (Exception e) {
             log.warn("Qdrant not available at startup ({}). Vector recall will be skipped until it comes online.",
                     e.getMessage());
@@ -59,12 +82,12 @@ public class QdrantService {
         if (!exists) {
             VectorParams vectorParams = VectorParams.newBuilder()
                     .setDistance(Distance.Cosine)
-                    .setSize(VECTOR_DIM)
+                    .setSize(vectorDim)
                     .build();
 
             qdrantClient.createCollectionAsync(COLLECTION, vectorParams).get();
 
-            log.info("Created Qdrant collection '{}' (dim={}, distance=cosine)", COLLECTION, VECTOR_DIM);
+            log.info("Created Qdrant collection '{}' (dim={}, distance=cosine)", COLLECTION, vectorDim);
         }
     }
 
@@ -92,10 +115,10 @@ public class QdrantService {
                     .build();
 
             // Build payload
-            Map<String, Value> payload = new HashMap<>();
+            Map<String, io.qdrant.client.grpc.JsonWithInt.Value> payload = new HashMap<>();
             if (metadata != null) {
                 for (Map.Entry<String, Object> entry : metadata.entrySet()) {
-                    Value val = toQdrantValue(entry.getValue());
+                    io.qdrant.client.grpc.JsonWithInt.Value val = toQdrantValue(entry.getValue());
                     if (val != null) {
                         payload.put(entry.getKey(), val);
                     }
@@ -193,7 +216,7 @@ public class QdrantService {
      */
     private Long extractSongIdFromPayload(ScoredPoint point) {
         try {
-            Value songIdVal = point.getPayloadMap().get("songId");
+            io.qdrant.client.grpc.JsonWithInt.Value songIdVal = point.getPayloadMap().get("songId");
             if (songIdVal != null && songIdVal.hasIntegerValue()) {
                 return songIdVal.getIntegerValue();
             }
@@ -217,19 +240,19 @@ public class QdrantService {
     /**
      * Convert a Java Object to a Qdrant Value.
      */
-    private Value toQdrantValue(Object obj) {
+    private io.qdrant.client.grpc.JsonWithInt.Value toQdrantValue(Object obj) {
         if (obj instanceof String s) {
-            return Value.newBuilder().setStringValue(s).build();
+            return io.qdrant.client.grpc.JsonWithInt.Value.newBuilder().setStringValue(s).build();
         } else if (obj instanceof Long l) {
-            return Value.newBuilder().setIntegerValue(l).build();
+            return io.qdrant.client.grpc.JsonWithInt.Value.newBuilder().setIntegerValue(l).build();
         } else if (obj instanceof Integer i) {
-            return Value.newBuilder().setIntegerValue(i).build();
+            return io.qdrant.client.grpc.JsonWithInt.Value.newBuilder().setIntegerValue(i).build();
         } else if (obj instanceof Number n) {
-            return Value.newBuilder().setDoubleValue(n.doubleValue()).build();
+            return io.qdrant.client.grpc.JsonWithInt.Value.newBuilder().setDoubleValue(n.doubleValue()).build();
         } else if (obj instanceof Boolean b) {
-            return Value.newBuilder().setBoolValue(b).build();
+            return io.qdrant.client.grpc.JsonWithInt.Value.newBuilder().setBoolValue(b).build();
         }
         // Fallback: convert to string
-        return Value.newBuilder().setStringValue(String.valueOf(obj)).build();
+        return io.qdrant.client.grpc.JsonWithInt.Value.newBuilder().setStringValue(String.valueOf(obj)).build();
     }
 }
