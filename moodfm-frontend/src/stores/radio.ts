@@ -24,7 +24,7 @@ export const useRadioStore = defineStore('radio', () => {
           title: s.title,
           artist: s.artist,
           album: s.album,
-          platform: s.platform || 'netease',
+          platform: s.platform || undefined,
           platformSongId: s.platformSongId || '',
           duration: s.durationSeconds || s.duration || 0,
           coverUrl: s.coverUrl,

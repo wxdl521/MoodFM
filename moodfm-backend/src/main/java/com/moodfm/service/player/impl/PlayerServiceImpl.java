@@ -708,6 +708,7 @@ public class PlayerServiceImpl implements PlayerService {
             double songEnergy  = node.path("energy").asDouble(0.5);
 
             MoodParams.MoodVector mv = mood.getMood();
+            // 有意使用二维距离（valence+energy）：歌曲特征侧没有 tension 维度，无法构成 spec 所述的三维距离。
             double dv = mv.getValence() - songValence;
             double de = mv.getEnergy()  - songEnergy;
             double dist = Math.sqrt(dv * dv + de * de);
