@@ -351,6 +351,48 @@ class RecallScoringTest {
     }
 
     // -----------------------------------------------------------------------
+    // Regression: comparator-contract fix (T1-1 stable sort with 100 candidates)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Regression test for the TimSort comparator-contract violation fixed in T1-1.
+     * Builds 100 candidates all with equal source weight and null features (so their
+     * scores differ only by jitter — the worst case for comparator consistency).
+     * Before the fix, scoreAndSort re-called computeTotal inside the comparator,
+     * producing a fresh random jitter on every pairwise comparison and triggering
+     * "Comparison method violates its general contract!" with >~18 candidates.
+     */
+    @Test
+    void scoreAndSort_100CandidatesEqualWeight_doesNotThrowAndReturnsAll() {
+        int N = 100;
+        LinkedHashMap<String, SongVO> dedup = new LinkedHashMap<>();
+        Map<String, Double> sourceWeight = new LinkedHashMap<>();
+
+        for (int i = 0; i < N; i++) {
+            String id = "song-" + i;
+            SongVO song = SongVO.builder()
+                    .platformSongId(id)
+                    .title("Song " + i)
+                    .artist("Artist " + i)
+                    // null features: emotion score falls back to UNKNOWN_EMOTION=0.5 for all
+                    .features(null)
+                    .build();
+            dedup.put(id, song);
+            sourceWeight.put(id, 1.0); // identical source weight for all
+        }
+
+        MoodParams mood = buildMood(0.5, 0.5, null, null);
+
+        // Must not throw IllegalArgumentException or any other exception
+        List<SongVO> result = assertDoesNotThrow(
+                () -> service.scoreAndSort(dedup, sourceWeight, mood),
+                "scoreAndSort must not throw even when all candidates share identical scores");
+
+        assertEquals(N, result.size(),
+                "scoreAndSort must return all " + N + " candidates");
+    }
+
+    // -----------------------------------------------------------------------
     // helper
     // -----------------------------------------------------------------------
 

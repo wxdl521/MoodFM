@@ -664,11 +664,19 @@ public class PlayerServiceImpl implements PlayerService {
                               Map<String, Double> sourceWeight,
                               MoodParams mood) {
         List<SongVO> candidates = new ArrayList<>(dedup.values());
-        candidates.sort((a, b) -> {
-            double scoreA = computeTotal(a, sourceWeight, mood);
-            double scoreB = computeTotal(b, sourceWeight, mood);
-            return Double.compare(scoreB, scoreA); // descending
-        });
+        // T1-1 fix: compute each candidate's total score exactly once, then sort by
+        // the cached value.  Computing inside the comparator caused a fresh Math.random()
+        // jitter on every pairwise comparison, making the comparator inconsistent and
+        // triggering "Comparison method violates its general contract!" on >= ~18 candidates.
+        // dedup is keyed by platformSongId (non-null, addSource skips nulls), so there
+        // are no null-key entries here.
+        Map<String, Double> scoreCache = new HashMap<>();
+        for (SongVO s : candidates) {
+            scoreCache.put(s.getPlatformSongId(), computeTotal(s, sourceWeight, mood));
+        }
+        candidates.sort((a, b) -> Double.compare(
+                scoreCache.get(b.getPlatformSongId()),
+                scoreCache.get(a.getPlatformSongId())));
         return candidates;
     }
 
