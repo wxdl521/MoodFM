@@ -635,10 +635,14 @@ class PlayerServiceImplTest {
         when(userService.getPreferences(7L)).thenReturn(null);
         when(embeddingService.embed(anyString())).thenThrow(new RuntimeException("vec off"));
 
+        // Fixture artist must NOT contain "未知" so the only source of "未知" in the
+        // captured prompt is the feature-fallback columns, not the artist string itself.
+        // (The authoritative null-path unit test is formatCandidateLine_nullFeatures_allFieldsFallToUnknown;
+        //  this test only verifies end-to-end wiring between persistSongs and buildRankingPrompt.)
         JsonNode oneSong = objectMapper.valueToTree(java.util.Map.of(
                 "songs", List.of(
                         java.util.Map.of("id", 502, "name", "无特征曲",
-                                "ar", List.of(java.util.Map.of("name", "未知艺人")))
+                                "ar", List.of(java.util.Map.of("name", "测试艺人")))
                 )
         ));
         when(musicApiClient.getUserLikedSongs(anyString(), anyString())).thenReturn(oneSong);
