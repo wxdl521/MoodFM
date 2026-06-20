@@ -26,6 +26,7 @@ import com.moodfm.service.ai.MoodAnalysisService;
 import com.moodfm.service.embedding.EmbeddingService;
 import com.moodfm.service.enrich.SongFeatureService;
 import com.moodfm.service.platform.PlatformBindingService;
+import com.moodfm.service.player.impl.ranking.AiRankingService;
 import com.moodfm.service.player.impl.recall.SongEmbeddingTextBuilder;
 import com.moodfm.service.user.UserService;
 import com.moodfm.service.vector.QdrantService;
@@ -129,6 +130,11 @@ class PlayerServiceImplTest {
         // SongEmbeddingTextBuilder stubs — lenient so tests that don't exercise vector path are OK.
         lenient().when(songEmbeddingTextBuilder.buildVectorQueryText(any(), any(), any())).thenReturn("music");
         lenient().when(songEmbeddingTextBuilder.buildSongEmbeddingText(any())).thenReturn("");
+
+        // Wire a real AiRankingService so llmClient.complete() is still called from inside rank(),
+        // keeping the startRadio_rankingPrompt_* ArgumentCaptor tests green.
+        AiRankingService aiRankingService = new AiRankingService(llmClient, llmFallbackMetrics, objectMapper);
+        ReflectionTestUtils.setField(playerService, "aiRankingService", aiRankingService);
     }
 
     // ========================================================================
@@ -486,63 +492,6 @@ class PlayerServiceImplTest {
     void reRankIfNeeded_nullUserId_isNoOp() {
         playerService.reRankIfNeeded(null, 1L);
         verify(valueOps, never()).increment(anyString());
-    }
-
-    // ========================================================================
-    // 9. formatCandidateLine: features-present path injects valence/energy/genre/mood_tags
-    // ========================================================================
-    @Test
-    void formatCandidateLine_withFeatures_injectsAllFields() {
-        SongVO song = SongVO.builder()
-                .title("月光")
-                .artist("陈奕迅")
-                .features("{\"valence\":0.2,\"energy\":0.3,\"genre\":\"民谣\",\"mood_tags\":[\"夜晚\",\"松弛\"]}")
-                .build();
-
-        String line = playerService.formatCandidateLine(1, song);
-
-        assertTrue(line.contains("0.2"),    "valence should appear in line; got: " + line);
-        assertTrue(line.contains("0.3"),    "energy should appear in line; got: " + line);
-        assertTrue(line.contains("民谣"),   "genre should appear in line; got: " + line);
-        assertTrue(line.contains("夜晚"),   "first mood_tag should appear in line; got: " + line);
-        // Should NOT contain the unknown fallback for any field
-        assertFalse(line.contains("未知"),  "no field should fall back to 未知 when features are complete; got: " + line);
-    }
-
-    @Test
-    void formatCandidateLine_nullFeatures_allFieldsFallToUnknown() {
-        SongVO song = SongVO.builder()
-                .title("静夜思")
-                .artist("周杰伦")
-                .features(null)
-                .build();
-
-        String line = playerService.formatCandidateLine(2, song);
-
-        // All four feature columns should be "未知"
-        long unknownCount = line.chars().filter(c -> c == '|').count();
-        // Format: idx|title|artist|valence|energy|genre|mood_tags\n → 6 pipes
-        assertEquals(6, unknownCount, "line should have 6 pipe separators; got: " + line);
-        // Count occurrences of 未知
-        int count = 0;
-        int idx = 0;
-        while ((idx = line.indexOf("未知", idx)) != -1) { count++; idx += 2; }
-        assertEquals(4, count, "all 4 feature fields should be 未知 when features is null; got: " + line);
-    }
-
-    @Test
-    void formatCandidateLine_emptyMoodTags_fallsBackToUnknown() {
-        SongVO song = SongVO.builder()
-                .title("空白")
-                .artist("无名")
-                .features("{\"valence\":0.5,\"energy\":0.5,\"genre\":\"流行\",\"mood_tags\":[]}")
-                .build();
-
-        String line = playerService.formatCandidateLine(3, song);
-
-        assertTrue(line.contains("流行"), "genre should appear; got: " + line);
-        // mood_tags is empty array → should fall back to 未知
-        assertTrue(line.endsWith("未知\n"), "empty mood_tags should produce 未知; got: " + line);
     }
 
     // ========================================================================
