@@ -10,6 +10,8 @@ import com.moodfm.domain.dto.radio.MoodInputRequest;
 import com.moodfm.domain.entity.GlobalBlacklist;
 import com.moodfm.domain.entity.MoodSession;
 import com.moodfm.domain.entity.PlatformBinding;
+import com.moodfm.domain.entity.PlatformSongMapping;
+import com.moodfm.domain.entity.Song;
 import com.moodfm.domain.vo.RadioQueueVO;
 import com.moodfm.domain.vo.SongVO;
 import com.moodfm.mapper.FeedbackEventMapper;
@@ -44,6 +46,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
+
+import org.mockito.ArgumentCaptor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -479,7 +483,195 @@ class PlayerServiceImplTest {
     }
 
     // ========================================================================
-    // 9. Enrichment timeout cap: configurable timeout is actually enforced
+    // 9. formatCandidateLine: features-present path injects valence/energy/genre/mood_tags
+    // ========================================================================
+    @Test
+    void formatCandidateLine_withFeatures_injectsAllFields() {
+        SongVO song = SongVO.builder()
+                .title("月光")
+                .artist("陈奕迅")
+                .features("{\"valence\":0.2,\"energy\":0.3,\"genre\":\"民谣\",\"mood_tags\":[\"夜晚\",\"松弛\"]}")
+                .build();
+
+        String line = playerService.formatCandidateLine(1, song);
+
+        assertTrue(line.contains("0.2"),    "valence should appear in line; got: " + line);
+        assertTrue(line.contains("0.3"),    "energy should appear in line; got: " + line);
+        assertTrue(line.contains("民谣"),   "genre should appear in line; got: " + line);
+        assertTrue(line.contains("夜晚"),   "first mood_tag should appear in line; got: " + line);
+        // Should NOT contain the unknown fallback for any field
+        assertFalse(line.contains("未知"),  "no field should fall back to 未知 when features are complete; got: " + line);
+    }
+
+    @Test
+    void formatCandidateLine_nullFeatures_allFieldsFallToUnknown() {
+        SongVO song = SongVO.builder()
+                .title("静夜思")
+                .artist("周杰伦")
+                .features(null)
+                .build();
+
+        String line = playerService.formatCandidateLine(2, song);
+
+        // All four feature columns should be "未知"
+        long unknownCount = line.chars().filter(c -> c == '|').count();
+        // Format: idx|title|artist|valence|energy|genre|mood_tags\n → 6 pipes
+        assertEquals(6, unknownCount, "line should have 6 pipe separators; got: " + line);
+        // Count occurrences of 未知
+        int count = 0;
+        int idx = 0;
+        while ((idx = line.indexOf("未知", idx)) != -1) { count++; idx += 2; }
+        assertEquals(4, count, "all 4 feature fields should be 未知 when features is null; got: " + line);
+    }
+
+    @Test
+    void formatCandidateLine_emptyMoodTags_fallsBackToUnknown() {
+        SongVO song = SongVO.builder()
+                .title("空白")
+                .artist("无名")
+                .features("{\"valence\":0.5,\"energy\":0.5,\"genre\":\"流行\",\"mood_tags\":[]}")
+                .build();
+
+        String line = playerService.formatCandidateLine(3, song);
+
+        assertTrue(line.contains("流行"), "genre should appear; got: " + line);
+        // mood_tags is empty array → should fall back to 未知
+        assertTrue(line.endsWith("未知\n"), "empty mood_tags should produce 未知; got: " + line);
+    }
+
+    // ========================================================================
+    // 10. buildRankingPrompt via startRadio: ArgumentCaptor asserts features
+    //     appear in the prompt passed to llmClient.complete().
+    //     The song is treated as EXISTING (backfill path) so features are
+    //     populated before rankWithAI is called.
+    // ========================================================================
+    @Test
+    void startRadio_rankingPrompt_containsFeaturesFromCandidates() throws Exception {
+        when(moodAnalysisService.analyze(any())).thenReturn(MoodParams.defaultParams());
+        when(sessionMapper.insert(any(MoodSession.class))).thenAnswer(inv -> {
+            ((MoodSession) inv.getArgument(0)).setId(10L);
+            return 1;
+        });
+
+        PlatformBinding binding = new PlatformBinding();
+        binding.setPlatform("netease");
+        binding.setCookieEncrypted("enc");
+        when(platformBindingService.getDefaultBinding(7L)).thenReturn(binding);
+        when(aesUtil.decrypt(anyString())).thenReturn("c");
+        when(globalBlacklistMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(userService.getPreferences(7L)).thenReturn(null);
+        when(embeddingService.embed(anyString())).thenThrow(new RuntimeException("vec off"));
+
+        // One song so it definitely enters rankWithAI
+        JsonNode oneSong = objectMapper.valueToTree(java.util.Map.of(
+                "songs", List.of(
+                        java.util.Map.of("id", 501, "name", "月光曲",
+                                "ar", List.of(java.util.Map.of("name", "钢琴师")))
+                )
+        ));
+        when(musicApiClient.getUserLikedSongs(anyString(), anyString())).thenReturn(oneSong);
+        when(musicApiClient.getRecommendSongs(anyString(), anyString())).thenReturn(oneSong);
+        when(musicApiClient.searchSongs(anyString(), anyString(), anyInt(), any())).thenReturn(oneSong);
+        when(musicApiClient.getSongUrls(anyString(), anyList(), any())).thenReturn(java.util.Map.of());
+
+        // Features string with the specific values we'll assert on
+        String richFeatures = "{\"valence\":0.2,\"energy\":0.3,\"genre\":\"民谣\"," +
+                "\"mood_tags\":[\"夜晚\",\"松弛\"],\"language\":\"zh\"," +
+                "\"tempo_bucket\":\"low\",\"source\":\"ai\",\"version\":1}";
+
+        // Set up backfill: platformSongMappingMapper returns a mapping for "501" → songId=99
+        // so backfillFeatures() will find the song in DB and populate features BEFORE rankWithAI.
+        PlatformSongMapping psm = new PlatformSongMapping();
+        psm.setSongId(99L);
+        psm.setPlatform("netease");
+        psm.setPlatformSongId("501");
+        when(platformSongMappingMapper.selectList(any())).thenReturn(List.of(psm));
+
+        // songMapper.selectBatchIds returns the Song with features (used in backfill)
+        Song existingSong = new Song();
+        existingSong.setId(99L);
+        existingSong.setFeatures(richFeatures);
+        when(songMapper.selectBatchIds(any())).thenReturn(List.of(existingSong));
+
+        // selectList (used in persistSongs title/artist lookup) → treat as existing
+        when(songMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        // Enrich not needed (song is existing), but stub to be safe
+        when(songFeatureService.enrich(anyString(), anyString(), any())).thenReturn(richFeatures);
+
+        // Capture the prompt passed to llmClient
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        when(llmClient.complete(any(), promptCaptor.capture())).thenReturn("");
+
+        MoodInputRequest req = new MoodInputRequest();
+        req.setText("quiet night");
+        req.setDurationMinutes(30);
+        playerService.startRadio(7L, req);
+
+        // llmClient.complete must have been called (candidates non-empty → rankWithAI)
+        verify(llmClient, times(1)).complete(any(), anyString());
+
+        String capturedPrompt = promptCaptor.getValue();
+        assertTrue(capturedPrompt.contains("0.2"),  "valence 0.2 should be in prompt; got:\n" + capturedPrompt);
+        assertTrue(capturedPrompt.contains("0.3"),  "energy 0.3 should be in prompt; got:\n" + capturedPrompt);
+        assertTrue(capturedPrompt.contains("民谣"), "genre 民谣 should be in prompt; got:\n" + capturedPrompt);
+        assertTrue(capturedPrompt.contains("夜晚"), "mood_tag 夜晚 should be in prompt; got:\n" + capturedPrompt);
+    }
+
+    @Test
+    void startRadio_rankingPrompt_nullFeatures_showsUnknown() throws Exception {
+        when(moodAnalysisService.analyze(any())).thenReturn(MoodParams.defaultParams());
+        when(sessionMapper.insert(any(MoodSession.class))).thenAnswer(inv -> {
+            ((MoodSession) inv.getArgument(0)).setId(11L);
+            return 1;
+        });
+
+        PlatformBinding binding = new PlatformBinding();
+        binding.setPlatform("netease");
+        binding.setCookieEncrypted("enc");
+        when(platformBindingService.getDefaultBinding(7L)).thenReturn(binding);
+        when(aesUtil.decrypt(anyString())).thenReturn("c");
+        when(globalBlacklistMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(userService.getPreferences(7L)).thenReturn(null);
+        when(embeddingService.embed(anyString())).thenThrow(new RuntimeException("vec off"));
+
+        JsonNode oneSong = objectMapper.valueToTree(java.util.Map.of(
+                "songs", List.of(
+                        java.util.Map.of("id", 502, "name", "无特征曲",
+                                "ar", List.of(java.util.Map.of("name", "未知艺人")))
+                )
+        ));
+        when(musicApiClient.getUserLikedSongs(anyString(), anyString())).thenReturn(oneSong);
+        when(musicApiClient.getRecommendSongs(anyString(), anyString())).thenReturn(oneSong);
+        when(musicApiClient.searchSongs(anyString(), anyString(), anyInt(), any())).thenReturn(oneSong);
+        when(musicApiClient.getSongUrls(anyString(), anyList(), any())).thenReturn(java.util.Map.of());
+        when(songMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(platformSongMappingMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        // fallback features: null features (simulate enrich returning null-features song)
+        // We return a features JSON that is null by having the fallback return null-features path.
+        // In this test we force the features to be null by stubbing fallbackFeatures AND
+        // making enrich throw, so the catch path sets features = fallbackFeatures().
+        // Alternatively: stub enrich to return null so the song.features stays null.
+        when(songFeatureService.enrich(anyString(), anyString(), any())).thenReturn(null);
+        when(songFeatureService.fallbackFeatures(anyString(), anyString(), any())).thenReturn(null);
+
+        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
+        when(llmClient.complete(any(), promptCaptor.capture())).thenReturn("");
+
+        MoodInputRequest req = new MoodInputRequest();
+        req.setText("mystery");
+        req.setDurationMinutes(30);
+        playerService.startRadio(7L, req);
+
+        verify(llmClient, times(1)).complete(any(), anyString());
+        String capturedPrompt = promptCaptor.getValue();
+        assertTrue(capturedPrompt.contains("未知"),
+                "prompt should contain 未知 when features are null; got:\n" + capturedPrompt);
+    }
+
+    // ========================================================================
+    // 12. Enrichment timeout cap: configurable timeout is actually enforced
     //    Sets enrichTimeoutSeconds=1 via reflection, makes enrich() block 3s,
     //    drives a startRadio call with one new song, and asserts it returns in
     //    well under 3s with a fallback-sourced features JSON.

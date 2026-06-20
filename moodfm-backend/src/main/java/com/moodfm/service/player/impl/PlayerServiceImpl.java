@@ -1508,6 +1508,45 @@ public class PlayerServiceImpl implements PlayerService {
         }
     }
 
+    /**
+     * Format a single candidate line for the rerank prompt.
+     * Format: 编号|歌名|艺人|valence|energy|genre|mood_tags
+     * Any missing/unparseable feature field falls back to "未知".
+     * Package-visible for direct unit testing.
+     */
+    String formatCandidateLine(int idx, SongVO s) {
+        String valence  = "未知";
+        String energy   = "未知";
+        String genre    = "未知";
+        String moodTags = "未知";
+
+        String featuresJson = s.getFeatures();
+        if (featuresJson != null && !featuresJson.isBlank()) {
+            try {
+                JsonNode node = objectMapper.readTree(featuresJson);
+                valence  = node.path("valence").asText("未知");
+                energy   = node.path("energy").asText("未知");
+                genre    = node.path("genre").asText("未知");
+
+                JsonNode tagsNode = node.path("mood_tags");
+                if (tagsNode.isArray() && tagsNode.size() > 0) {
+                    StringBuilder tags = new StringBuilder();
+                    for (JsonNode tag : tagsNode) {
+                        if (tags.length() > 0) tags.append(",");
+                        tags.append(tag.asText(""));
+                    }
+                    String tagsStr = tags.toString();
+                    moodTags = tagsStr.isEmpty() ? "未知" : tagsStr;
+                }
+            } catch (Exception ignored) {
+                // parse failure → all fields remain "未知"
+            }
+        }
+
+        return idx + "|" + s.getTitle() + "|" + s.getArtist()
+                + "|" + valence + "|" + energy + "|" + genre + "|" + moodTags + "\n";
+    }
+
     private String buildRankingPrompt(List<SongVO> candidates, MoodParams mood) {
         try {
             String template = new String(
@@ -1516,8 +1555,7 @@ public class PlayerServiceImpl implements PlayerService {
 
             StringBuilder songList = new StringBuilder();
             for (int i = 0; i < candidates.size(); i++) {
-                SongVO s = candidates.get(i);
-                songList.append(i + 1).append("|").append(s.getTitle()).append("|").append(s.getArtist()).append("\n");
+                songList.append(formatCandidateLine(i + 1, candidates.get(i)));
             }
 
             MoodParams.MoodVector v = mood.getMood() != null ? mood.getMood() : new MoodParams.MoodVector();
