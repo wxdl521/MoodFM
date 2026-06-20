@@ -99,7 +99,7 @@ function handleNext() {
       songId: Number(prevSong.id),
       playedSeconds: playedSecs,
       totalSeconds: totalSecs,
-      platform: prevSong.platform || 'netease',
+      platform: prevSong.platform,
     }).catch(err => { logger.warn('miniplayer:feedback-skip', err) })
   }
 }

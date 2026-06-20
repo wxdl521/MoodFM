@@ -119,7 +119,7 @@ function load(url: string): Promise<void> {
             songId: Number(completedSong.id),
             playedSeconds: totalSecs,
             totalSeconds: totalSecs,
-            platform: completedSong.platform || 'netease',
+            platform: completedSong.platform,
           }).catch(err => { logger.warn('player:feedback-completed', err) })
         }
         advanceToPlayableOrStop()

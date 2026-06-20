@@ -363,6 +363,7 @@ watch(() => player.volume, (newVol) => {
       radioApi.sendFeedback('volume_up', {
         sessionId: Number(sid),
         songId: Number(song.id),
+        platform: song.platform,
       }).catch(err => { logger.warn('player:feedback-volume', err) })
     }
   }
@@ -561,7 +562,7 @@ function _sendSkipFeedback(song: typeof player.currentSong, sid: string | null, 
     songId: Number(song.id),
     playedSeconds: playedSecs,
     totalSeconds: totalSecs,
-    platform: song.platform || 'netease',
+    platform: song.platform,
   }).catch(err => { logger.warn('player:feedback-skip', err) })
 }
 
@@ -636,7 +637,7 @@ async function handleDislike() {
   const sid = player.sessionId
   if (song && sid) {
     try {
-      await radioApi.sendFeedback('dislike', { songId: Number(song.id), sessionId: Number(sid) })
+      await radioApi.sendFeedback('dislike', { songId: Number(song.id), sessionId: Number(sid), platform: song.platform })
     } catch (err) {
       // silent: dislike 是用户操作，但即使 feedback 失败也仍然要 handleNext
       // 体验上跳过下一首已经是用户期望，不再额外弹 toast 干扰
