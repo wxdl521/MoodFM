@@ -23,6 +23,7 @@ import com.moodfm.service.embedding.EmbeddingService;
 import com.moodfm.service.enrich.SongFeatureService;
 import com.moodfm.service.platform.PlatformBindingService;
 import com.moodfm.service.player.PlayerService;
+import com.moodfm.service.player.impl.playurl.PlayUrlService;
 import com.moodfm.service.user.UserService;
 import com.moodfm.service.player.impl.recall.SongEmbeddingTextBuilder;
 import com.moodfm.service.vector.QdrantService;
@@ -68,6 +69,7 @@ public class PlayerServiceImpl implements PlayerService {
     private final GlobalBlacklistMapper globalBlacklistMapper;
     private final SongFeatureService songFeatureService;
     private final SongEmbeddingTextBuilder songEmbeddingTextBuilder;
+    private final PlayUrlService playUrlService;
 
     /** Configurable total timeout (seconds) for concurrent song-feature enrichment in persistSongs. */
     @Value("${song.feature.enrich.timeout-seconds:8}")
@@ -158,7 +160,7 @@ public class PlayerServiceImpl implements PlayerService {
         List<SongVO> ranked = aiRankingService.rank(candidates, moodParams);
 
         // 5.5 批量获取播放地址
-        enrichWithPlayUrls(ranked, platform, cookie);
+        playUrlService.enrichWithPlayUrls(ranked, platform, cookie);
 
         // 6. 持久化歌曲 + 平台映射（Feature 3 前置）
         persistSongs(ranked, platform);
@@ -275,7 +277,7 @@ public class PlayerServiceImpl implements PlayerService {
         List<SongVO> ranked = aiRankingService.rank(candidates, moodParams);
 
         // 7.5 批量获取播放地址
-        enrichWithPlayUrls(ranked, platform, cookie);
+        playUrlService.enrichWithPlayUrls(ranked, platform, cookie);
 
         // 8. 持久化 + 存入 Redis 队列
         persistSongs(ranked, platform);
@@ -351,54 +353,7 @@ public class PlayerServiceImpl implements PlayerService {
 
     @Override
     public String getSongUrl(Long userId, String platform, String songId) {
-        PlatformBinding binding = platformBindingService.getValidBinding(userId, platform);
-        String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
-        String url = musicApiClient.getSongUrl(platform, songId, cookie);
-        if (url != null && !url.isBlank()) return url;
-
-        // Fallback: look up the song in DB and try Netease
-        if ("qqmusic".equals(platform)) {
-            url = fallbackToNetease(songId, null, null, null);
-        }
-        if (url == null || url.isBlank()) throw new BizException(ResultCode.RECALL_FAILED, "获取播放地址失败");
-        return url;
-    }
-
-    /**
-     * Try to get a play URL from Netease by searching the song title + artist.
-     * Returns null if the fallback also fails.
-     */
-    private String fallbackToNetease(String qqSongId, String title, String artist, String cookie) {
-        try {
-            // If title/artist not provided, look up from DB via platform mapping
-            if ((title == null || title.isBlank()) && qqSongId != null) {
-                PlatformSongMapping mapping = platformSongMappingMapper.selectOne(
-                        new LambdaQueryWrapper<PlatformSongMapping>()
-                                .eq(PlatformSongMapping::getPlatformSongId, qqSongId)
-                                .eq(PlatformSongMapping::getPlatform, "qqmusic")
-                                .last("LIMIT 1"));
-                if (mapping != null) {
-                    Song song = songMapper.selectById(mapping.getSongId());
-                    if (song != null) {
-                        title = song.getTitle();
-                        artist = song.getArtist();
-                    }
-                }
-            }
-            if (title == null || title.isBlank()) return null;
-
-            String query = title + (artist != null && !artist.isBlank() ? " " + artist : "");
-            List<SongVO> hits = fetchSearch("netease", query, 5);
-            if (hits.isEmpty()) return null;
-
-            String neteaseId = hits.get(0).getPlatformSongId();
-            if (neteaseId == null) return null;
-
-            return musicApiClient.getSongUrl("netease", neteaseId, null);
-        } catch (Exception e) {
-            log.warn("Netease fallback failed for QQ song {}", qqSongId, e);
-            return null;
-        }
+        return playUrlService.getSongUrl(userId, platform, songId);
     }
 
     // ===================== Feature 1: 动态重排 =====================
@@ -455,7 +410,7 @@ public class PlayerServiceImpl implements PlayerService {
             List<SongVO> nextBatch = ranked.stream().limit(RERANK_NEXT_N).collect(Collectors.toList());
 
             // 批量获取播放地址
-            enrichWithPlayUrls(nextBatch, platform, cookie);
+            playUrlService.enrichWithPlayUrls(nextBatch, platform, cookie);
 
             // 持久化新歌曲
             persistSongs(nextBatch, platform);
@@ -500,7 +455,7 @@ public class PlayerServiceImpl implements PlayerService {
             if (fresh.isEmpty()) return;
 
             // 批量获取播放地址
-            enrichWithPlayUrls(fresh, platform, cookie);
+            playUrlService.enrichWithPlayUrls(fresh, platform, cookie);
 
             persistSongs(fresh, platform);
 
@@ -1317,74 +1272,6 @@ public class PlayerServiceImpl implements PlayerService {
      */
     private SongVO songToVO(Song song) {
         return songsToVOs(List.of(song)).get(0);
-    }
-
-    // ===================== Play URL 批量获取 =====================
-
-    /**
-     * Batch-fetch play URLs from the music adapter and set them on SongVOs.
-     * Uses a single API call with comma-separated IDs to avoid N+1 requests.
-     * For QQ Music, songs without a URL are retried via Netease fallback.
-     */
-    private void enrichWithPlayUrls(List<SongVO> songs, String platform, String cookie) {
-        if (songs == null || songs.isEmpty()) return;
-        List<String> ids = songs.stream()
-                .map(SongVO::getPlatformSongId)
-                .filter(id -> id != null && !id.isBlank())
-                .distinct()
-                .collect(Collectors.toList());
-        if (ids.isEmpty()) return;
-        try {
-            Map<String, String> urlMap = musicApiClient.getSongUrls(platform, ids, cookie);
-            int enriched = 0;
-            for (SongVO song : songs) {
-                String url = urlMap.get(song.getPlatformSongId());
-                if (url != null && !url.isBlank()) {
-                    song.setPlayUrl(url);
-                    song.setUrlSource(platform);
-                    enriched++;
-                }
-            }
-            log.info("Enriched {}/{} songs with play URLs from {}", enriched, songs.size(), platform);
-
-            // For QQ Music: try Netease fallback for songs that still have no URL
-            if ("qqmusic".equals(platform)) {
-                List<SongVO> missing = songs.stream()
-                        .filter(s -> s.getPlayUrl() == null || s.getPlayUrl().isBlank())
-                        .collect(Collectors.toList());
-                if (!missing.isEmpty()) {
-                    fillFallbackUrls(missing);
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to enrich songs with play URLs, continuing without them", e);
-        }
-    }
-
-    private void fillFallbackUrls(List<SongVO> songs) {
-        int fallbackCount = 0;
-        int failedCount = 0;
-        for (SongVO song : songs) {
-            try {
-                String neteaseUrl = fallbackToNetease(
-                        song.getPlatformSongId(), song.getTitle(), song.getArtist(), null);
-                if (neteaseUrl != null && !neteaseUrl.isBlank()) {
-                    song.setPlayUrl(neteaseUrl);
-                    song.setUrlSource("netease_fallback");
-                    fallbackCount++;
-                } else {
-                    failedCount++;
-                    log.debug("Netease fallback returned null for: {} - {}", song.getTitle(), song.getArtist());
-                }
-            } catch (Exception e) {
-                failedCount++;
-                log.debug("Netease fallback error for {}: {}", song.getTitle(), e.getMessage());
-            }
-        }
-        if (fallbackCount > 0 || failedCount > 0) {
-            log.info("Netease fallback: {}/{} QQ Music songs got URLs ({} failed)",
-                    fallbackCount, songs.size(), failedCount);
-        }
     }
 
     private Long toLong(Object val) {

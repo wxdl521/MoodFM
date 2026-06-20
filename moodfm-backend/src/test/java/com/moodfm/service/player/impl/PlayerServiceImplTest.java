@@ -26,6 +26,7 @@ import com.moodfm.service.ai.MoodAnalysisService;
 import com.moodfm.service.embedding.EmbeddingService;
 import com.moodfm.service.enrich.SongFeatureService;
 import com.moodfm.service.platform.PlatformBindingService;
+import com.moodfm.service.player.impl.playurl.PlayUrlService;
 import com.moodfm.service.player.impl.ranking.AiRankingService;
 import com.moodfm.service.player.impl.recall.SongEmbeddingTextBuilder;
 import com.moodfm.service.user.UserService;
@@ -135,6 +136,13 @@ class PlayerServiceImplTest {
         // keeping the startRadio_rankingPrompt_* ArgumentCaptor tests green.
         AiRankingService aiRankingService = new AiRankingService(llmClient, llmFallbackMetrics, objectMapper);
         ReflectionTestUtils.setField(playerService, "aiRankingService", aiRankingService);
+
+        // Wire a real PlayUrlService constructed from the existing leaf mocks.
+        // musicApiClient.getSongUrls() is stubbed to an empty map in startRadio tests,
+        // so enrichment is a no-op exactly as before.
+        PlayUrlService playUrlService = new PlayUrlService(musicApiClient, platformBindingService, aesUtil,
+                platformSongMappingMapper, songMapper);
+        ReflectionTestUtils.setField(playerService, "playUrlService", playUrlService);
     }
 
     // ========================================================================
