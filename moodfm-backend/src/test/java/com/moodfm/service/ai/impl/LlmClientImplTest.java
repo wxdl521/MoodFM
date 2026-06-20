@@ -14,8 +14,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -43,15 +41,18 @@ class LlmClientImplTest {
 
     @Test
     void complete_successOnFirstAttempt_returnsContent() {
+        AtomicInteger callCount = new AtomicInteger(0);
         when(chatClient.prompt().user(anyString()).system(anyString()).call().content())
-                .thenReturn("hello from LLM");
+                .thenAnswer(inv -> {
+                    callCount.incrementAndGet();
+                    return "hello from LLM";
+                });
 
         client = new LlmClientImpl(chatClient, 5L);
         String result = client.complete("sys", "user msg");
 
         assertEquals("hello from LLM", result);
-        // Only one call (no retry needed)
-        verify(chatClient.prompt().user(anyString()).system(anyString()).call(), times(1)).content();
+        assertEquals(1, callCount.get(), "expected exactly 1 invocation (no retry needed)");
     }
 
     @Test
