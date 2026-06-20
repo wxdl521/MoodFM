@@ -21,6 +21,7 @@ import com.moodfm.service.ai.LlmClient;
 import com.moodfm.service.ai.LlmFallbackMetrics;
 import com.moodfm.service.ai.MoodAnalysisService;
 import com.moodfm.service.embedding.EmbeddingService;
+import com.moodfm.service.enrich.SongFeatureService;
 import com.moodfm.service.platform.PlatformBindingService;
 import com.moodfm.service.player.PlayerService;
 import com.moodfm.service.user.UserService;
@@ -65,6 +66,7 @@ public class PlayerServiceImpl implements PlayerService {
     private final EmbeddingService embeddingService;
     private final QdrantService qdrantService;
     private final GlobalBlacklistMapper globalBlacklistMapper;
+    private final SongFeatureService songFeatureService;
 
     /** Virtual Thread executor for background tasks (Feature 2: queue auto-refill) */
     private final java.util.concurrent.ExecutorService bgExecutor = Executors.newVirtualThreadPerTaskExecutor();
@@ -853,6 +855,28 @@ public class PlayerServiceImpl implements PlayerService {
                 existingByKey.put(s.getTitle() + "\0" + s.getArtist(), s);
             }
 
+            // Concurrently enrich only truly-new songs (not already in DB).
+            // Use a virtual-thread executor with an 8-second total timeout.
+            List<SongVO> trulyNewVos = fallbackToTitleArtist.stream()
+                    .filter(vo -> !existingByKey.containsKey(vo.getTitle() + "\0" + vo.getArtist()))
+                    .toList();
+            Map<String, CompletableFuture<String>> enrichFutures = new HashMap<>();
+            try (var enrichExecutor = Executors.newVirtualThreadPerTaskExecutor()) {
+                for (SongVO vo : trulyNewVos) {
+                    String featureKey = vo.getTitle() + "\0" + vo.getArtist();
+                    enrichFutures.put(featureKey, CompletableFuture.supplyAsync(
+                            () -> songFeatureService.enrich(vo.getTitle(), vo.getArtist(), vo.getAlbum()),
+                            enrichExecutor));
+                }
+                try {
+                    CompletableFuture.allOf(enrichFutures.values().toArray(new CompletableFuture[0]))
+                            .get(8, TimeUnit.SECONDS);
+                } catch (Exception timeout) {
+                    log.warn("Song feature enrichment timed out for batch of {} songs; unfilled will use fallback",
+                            trulyNewVos.size());
+                }
+            }
+
             for (SongVO vo : fallbackToTitleArtist) {
                 try {
                     String key = vo.getTitle() + "\0" + vo.getArtist();
@@ -868,6 +892,12 @@ public class PlayerServiceImpl implements PlayerService {
                         song.setAlbum(vo.getAlbum());
                         song.setDurationSeconds(vo.getDurationSeconds());
                         song.setCoverUrl(vo.getCoverUrl());
+                        // Set features: use enrich result if done, else a fallback JSON
+                        CompletableFuture<String> fut = enrichFutures.get(key);
+                        String featuresJson = (fut != null && fut.isDone() && !fut.isCompletedExceptionally())
+                                ? fut.get()
+                                : songFeatureService.enrich(vo.getTitle(), vo.getArtist(), vo.getAlbum());
+                        song.setFeatures(featuresJson);
                         songMapper.insert(song);
                         songId = song.getId();
                         newSongsById.put(songId, vo);

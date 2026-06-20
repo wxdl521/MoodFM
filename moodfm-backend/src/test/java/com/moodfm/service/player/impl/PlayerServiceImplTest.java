@@ -22,6 +22,7 @@ import com.moodfm.service.ai.LlmClient;
 import com.moodfm.service.ai.LlmFallbackMetrics;
 import com.moodfm.service.ai.MoodAnalysisService;
 import com.moodfm.service.embedding.EmbeddingService;
+import com.moodfm.service.enrich.SongFeatureService;
 import com.moodfm.service.platform.PlatformBindingService;
 import com.moodfm.service.user.UserService;
 import com.moodfm.service.vector.QdrantService;
@@ -89,6 +90,7 @@ class PlayerServiceImplTest {
     @Mock private EmbeddingService embeddingService;
     @Mock private QdrantService qdrantService;
     @Mock private GlobalBlacklistMapper globalBlacklistMapper;
+    @Mock private SongFeatureService songFeatureService;
 
     @Mock private ValueOperations<String, String> valueOps;
     @Mock private ListOperations<String, String> listOps;
@@ -345,6 +347,10 @@ class PlayerServiceImplTest {
         when(songMapper.selectList(any())).thenReturn(Collections.emptyList());
         // platformSongMappingMapper.selectList for the per-new-song mapping check
         when(platformSongMappingMapper.selectList(any())).thenReturn(Collections.emptyList());
+        // SongFeatureService: stub to return instantly (avoids 8s timeout on async enrichment)
+        when(songFeatureService.enrich(anyString(), anyString(), any()))
+                .thenReturn("{\"valence\":0.5,\"energy\":0.5,\"genre\":\"未知\",\"language\":\"zh\"," +
+                        "\"tempo_bucket\":\"mid\",\"mood_tags\":[],\"source\":\"ai\",\"version\":1}");
 
         MoodInputRequest req = new MoodInputRequest();
         req.setText("happy");
@@ -407,6 +413,10 @@ class PlayerServiceImplTest {
         when(musicApiClient.getSongUrls(anyString(), anyList(), any())).thenReturn(java.util.Map.of());
         when(songMapper.selectList(any())).thenReturn(Collections.emptyList());
         when(platformSongMappingMapper.selectList(any())).thenReturn(Collections.emptyList());
+        // SongFeatureService: stub to return instantly (avoids 8s timeout on async enrichment)
+        when(songFeatureService.enrich(anyString(), anyString(), any()))
+                .thenReturn("{\"valence\":0.5,\"energy\":0.5,\"genre\":\"未知\",\"language\":\"zh\"," +
+                        "\"tempo_bucket\":\"mid\",\"mood_tags\":[],\"source\":\"ai\",\"version\":1}");
 
         MoodInputRequest req = new MoodInputRequest();
         req.setText("anything");

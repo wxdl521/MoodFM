@@ -21,6 +21,9 @@ public class CacheConfig {
                             .maximumSize("songs".equals(name) ? 50_000 : 5_000)
                             .expireAfterWrite(1, TimeUnit.HOURS)
                             .build();
+                    case "songFeatures" -> Caffeine.newBuilder()
+                            .maximumSize(100_000)
+                            .build();
                     case "embeddings" -> Caffeine.newBuilder()
                             .maximumSize(10_000)
                             .expireAfterWrite(24, TimeUnit.HOURS)
