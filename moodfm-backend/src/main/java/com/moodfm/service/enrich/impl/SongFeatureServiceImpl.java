@@ -118,6 +118,11 @@ public class SongFeatureServiceImpl implements SongFeatureService {
                 && node.has("language");
     }
 
+    @Override
+    public String fallbackFeatures(String title, String artist, String album) {
+        return buildFallbackJson(title, artist);
+    }
+
     /**
      * Builds a safe fallback feature JSON.
      *

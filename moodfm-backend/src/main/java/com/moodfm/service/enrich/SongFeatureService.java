@@ -22,4 +22,19 @@ public interface SongFeatureService {
      * @return a valid JSON string with the 8 feature fields; never null, never throws
      */
     String enrich(String title, String artist, String album);
+
+    /**
+     * Returns a local fallback feature JSON without calling the LLM.
+     *
+     * <p>Intended for use when an async enrichment future has timed out or
+     * completed exceptionally — avoids a second blocking LLM round-trip.
+     * Does NOT increment any fallback metric (no double-counting; {@link #enrich}
+     * already counts its own failures).
+     *
+     * @param title  song title (may be null)
+     * @param artist artist name (may be null)
+     * @param album  album name (may be null)
+     * @return a valid JSON string with {@code source="fallback"}; never null, never throws
+     */
+    String fallbackFeatures(String title, String artist, String album);
 }

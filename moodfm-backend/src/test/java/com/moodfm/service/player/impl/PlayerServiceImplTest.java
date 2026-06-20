@@ -38,6 +38,7 @@ import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Duration;
 import java.util.Collections;
@@ -107,6 +108,11 @@ class PlayerServiceImplTest {
         var field = PlayerServiceImpl.class.getDeclaredField("objectMapper");
         field.setAccessible(true);
         field.set(playerService, objectMapper);
+
+        // @Value("${song.feature.enrich.timeout-seconds:8}") is not injected by Mockito
+        // (no Spring context), so default is 0. Set a sensible default so most tests
+        // complete the async enrichment without timing out.
+        ReflectionTestUtils.setField(playerService, "enrichTimeoutSeconds", 8);
 
         // Default Redis stubs used across most tests (lenient: unused stubs OK).
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
@@ -468,5 +474,91 @@ class PlayerServiceImplTest {
     void reRankIfNeeded_nullUserId_isNoOp() {
         playerService.reRankIfNeeded(null, 1L);
         verify(valueOps, never()).increment(anyString());
+    }
+
+    // ========================================================================
+    // 9. Enrichment timeout cap: configurable timeout is actually enforced
+    //    Sets enrichTimeoutSeconds=1 via reflection, makes enrich() block 3s,
+    //    drives a startRadio call with one new song, and asserts it returns in
+    //    well under 3s with a fallback-sourced features JSON.
+    // ========================================================================
+    @Test
+    void persistSongs_enrichmentTimeout_returnsWithinCapNotBlockedBySlowLlm() throws Exception {
+        // --- Set the timeout to 1 second so the test runs fast ---
+        ReflectionTestUtils.setField(playerService, "enrichTimeoutSeconds", 1);
+
+        // --- Wiring identical to test 6 but with a slow enrich() stub ---
+        when(moodAnalysisService.analyze(any())).thenReturn(MoodParams.defaultParams());
+        when(sessionMapper.insert(any(MoodSession.class))).thenAnswer(inv -> {
+            ((MoodSession) inv.getArgument(0)).setId(9L);
+            return 1;
+        });
+
+        PlatformBinding binding = new PlatformBinding();
+        binding.setPlatform("netease");
+        binding.setCookieEncrypted("enc");
+        when(platformBindingService.getDefaultBinding(7L)).thenReturn(binding);
+        when(aesUtil.decrypt(anyString())).thenReturn("c");
+        when(globalBlacklistMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(userService.getPreferences(7L)).thenReturn(null);
+        when(embeddingService.embed(anyString())).thenThrow(new RuntimeException("vec off"));
+
+        // One unique song so persistSongs sees exactly one "truly new" song
+        JsonNode oneSong = objectMapper.valueToTree(java.util.Map.of(
+                "songs", List.of(
+                        java.util.Map.of("id", 999, "name", "Slow Song",
+                                "ar", List.of(java.util.Map.of("name", "SlowArtist")))
+                )
+        ));
+        when(musicApiClient.getUserLikedSongs(anyString(), anyString())).thenReturn(oneSong);
+        when(musicApiClient.getRecommendSongs(anyString(), anyString())).thenReturn(oneSong);
+        when(musicApiClient.searchSongs(anyString(), anyString(), anyInt(), any())).thenReturn(oneSong);
+        when(llmClient.complete(any(), anyString())).thenReturn("");
+        when(musicApiClient.getSongUrls(anyString(), anyList(), any())).thenReturn(java.util.Map.of());
+        when(songMapper.selectList(any())).thenReturn(Collections.emptyList());
+        when(platformSongMappingMapper.selectList(any())).thenReturn(Collections.emptyList());
+
+        // enrich() blocks for 3 seconds — far beyond the 1s cap
+        when(songFeatureService.enrich(anyString(), anyString(), any())).thenAnswer(inv -> {
+            Thread.sleep(3000);
+            return "{\"source\":\"ai\"}";
+        });
+
+        // fallbackFeatures() returns instantly with a fallback JSON
+        String fallbackJson = "{\"valence\":0.5,\"energy\":0.5,\"genre\":\"未知\",\"language\":\"en\"," +
+                "\"tempo_bucket\":\"mid\",\"mood_tags\":[],\"source\":\"fallback\",\"version\":1}";
+        when(songFeatureService.fallbackFeatures(anyString(), anyString(), any()))
+                .thenReturn(fallbackJson);
+
+        // songMapper.insert: capture the inserted Song so we can inspect its features
+        com.moodfm.domain.entity.Song[] insertedSong = {null};
+        when(songMapper.insert(any(com.moodfm.domain.entity.Song.class))).thenAnswer(inv -> {
+            com.moodfm.domain.entity.Song s = inv.getArgument(0);
+            s.setId(42L);
+            insertedSong[0] = s;
+            return 1;
+        });
+
+        long start = System.currentTimeMillis();
+        RadioQueueVO result = playerService.startRadio(7L, new MoodInputRequest() {{
+            setText("timeout test");
+            setDurationMinutes(30);
+        }});
+        long elapsed = System.currentTimeMillis() - start;
+
+        // Must complete well before the 3s LLM sleep
+        assertTrue(elapsed < 2500,
+                "startRadio should return within 2500ms when enrich() is slow; took " + elapsed + "ms");
+
+        // The song was still persisted (queue has 1 entry)
+        assertNotNull(result.getSongs());
+        assertEquals(1, result.getSongs().size());
+
+        // The inserted Song should have been given the fallback JSON (not the slow AI result)
+        assertNotNull(insertedSong[0], "songMapper.insert should have been called for the new song");
+        String features = insertedSong[0].getFeatures();
+        assertNotNull(features, "features must not be null");
+        assertTrue(features.contains("\"source\":\"fallback\""),
+                "timed-out song should have fallback features; got: " + features);
     }
 }

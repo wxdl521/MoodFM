@@ -29,6 +29,7 @@ import com.moodfm.service.vector.QdrantService;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -67,6 +68,10 @@ public class PlayerServiceImpl implements PlayerService {
     private final QdrantService qdrantService;
     private final GlobalBlacklistMapper globalBlacklistMapper;
     private final SongFeatureService songFeatureService;
+
+    /** Configurable total timeout (seconds) for concurrent song-feature enrichment in persistSongs. */
+    @Value("${song.feature.enrich.timeout-seconds:8}")
+    private int enrichTimeoutSeconds;
 
     /** Virtual Thread executor for background tasks (Feature 2: queue auto-refill) */
     private final java.util.concurrent.ExecutorService bgExecutor = Executors.newVirtualThreadPerTaskExecutor();
@@ -870,10 +875,13 @@ public class PlayerServiceImpl implements PlayerService {
                 }
                 try {
                     CompletableFuture.allOf(enrichFutures.values().toArray(new CompletableFuture[0]))
-                            .get(8, TimeUnit.SECONDS);
+                            .get(enrichTimeoutSeconds, TimeUnit.SECONDS);
                 } catch (Exception timeout) {
-                    log.warn("Song feature enrichment timed out for batch of {} songs; unfilled will use fallback",
-                            trulyNewVos.size());
+                    long notDone = enrichFutures.values().stream().filter(f -> !f.isDone()).count();
+                    log.warn("Song feature enrichment timed out after {}s; {} song(s) fell back to local fallback",
+                            enrichTimeoutSeconds, notDone);
+                    // Interrupt straggler virtual threads so close() returns promptly
+                    enrichExecutor.shutdownNow();
                 }
             }
 
@@ -892,11 +900,17 @@ public class PlayerServiceImpl implements PlayerService {
                         song.setAlbum(vo.getAlbum());
                         song.setDurationSeconds(vo.getDurationSeconds());
                         song.setCoverUrl(vo.getCoverUrl());
-                        // Set features: use enrich result if done, else a fallback JSON
+                        // Set features: use enrich result if done, else local non-blocking fallback
                         CompletableFuture<String> fut = enrichFutures.get(key);
-                        String featuresJson = (fut != null && fut.isDone() && !fut.isCompletedExceptionally())
-                                ? fut.get()
-                                : songFeatureService.enrich(vo.getTitle(), vo.getArtist(), vo.getAlbum());
+                        String featuresJson;
+                        if (fut != null && fut.isDone() && !fut.isCompletedExceptionally()) {
+                            featuresJson = fut.get();
+                        } else {
+                            // Future is null, still running, or completed exceptionally —
+                            // use non-blocking local fallback (no LLM call, no metric increment)
+                            featuresJson = songFeatureService.fallbackFeatures(
+                                    vo.getTitle(), vo.getArtist(), vo.getAlbum());
+                        }
                         song.setFeatures(featuresJson);
                         songMapper.insert(song);
                         songId = song.getId();
