@@ -3,17 +3,16 @@ package com.moodfm.service.ai.impl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.moodfm.ai.model.MoodParams;
 import com.moodfm.domain.dto.radio.MoodInputRequest;
+import com.moodfm.service.ai.LlmClient;
+import com.moodfm.service.ai.LlmFallbackMetrics;
 import com.moodfm.service.ai.MoodAnalysisService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
-import org.springframework.util.DigestUtils;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 @Slf4j
@@ -21,8 +20,9 @@ import java.nio.charset.StandardCharsets;
 @RequiredArgsConstructor
 public class MoodAnalysisServiceImpl implements MoodAnalysisService {
 
-    private final ChatClient chatClient;
+    private final LlmClient llmClient;
     private final ObjectMapper objectMapper;
+    private final LlmFallbackMetrics llmFallbackMetrics;
 
     @Value("classpath:prompts/mood-analysis.txt")
     private Resource promptTemplate;
@@ -39,16 +39,13 @@ public class MoodAnalysisServiceImpl implements MoodAnalysisService {
             String systemPrompt = new String(promptTemplate.getInputStream().readAllBytes(), StandardCharsets.UTF_8)
                     .replace("{{userInput}}", userInput);
 
-            String response = chatClient.prompt()
-                    .user(userInput)
-                    .system(systemPrompt)
-                    .call()
-                    .content();
-
-            String json = extractJson(response);
+            String content = llmClient.complete(systemPrompt, userInput);
+            String json = extractJson(content);
             return objectMapper.readValue(json, MoodParams.class);
         } catch (Exception e) {
-            log.warn("Mood analysis failed, using default params: {}", e.getMessage());
+            llmFallbackMetrics.moodAnalysisFallback();
+            String truncated = userInput.length() > 120 ? userInput.substring(0, 120) + "…" : userInput;
+            log.warn("mood analysis fallback: reason={}, input='{}'", e.getMessage(), truncated);
             return MoodParams.defaultParams();
         }
     }

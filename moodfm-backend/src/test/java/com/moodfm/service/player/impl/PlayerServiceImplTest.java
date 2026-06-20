@@ -18,6 +18,8 @@ import com.moodfm.mapper.MoodSessionMapper;
 import com.moodfm.mapper.PlatformSongMappingMapper;
 import com.moodfm.mapper.SongMapper;
 import com.moodfm.mapper.UserProfileMapper;
+import com.moodfm.service.ai.LlmClient;
+import com.moodfm.service.ai.LlmFallbackMetrics;
 import com.moodfm.service.ai.MoodAnalysisService;
 import com.moodfm.service.embedding.EmbeddingService;
 import com.moodfm.service.platform.PlatformBindingService;
@@ -26,13 +28,11 @@ import com.moodfm.service.vector.QdrantService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Answers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -84,7 +84,8 @@ class PlayerServiceImplTest {
     @Mock private UserService userService;
     @Mock private AesUtil aesUtil;
     @Mock private StringRedisTemplate redisTemplate;
-    @Mock(answer = Answers.RETURNS_DEEP_STUBS) private ChatClient chatClient;
+    @Mock private LlmClient llmClient;
+    @Mock private LlmFallbackMetrics llmFallbackMetrics;
     @Mock private EmbeddingService embeddingService;
     @Mock private QdrantService qdrantService;
     @Mock private GlobalBlacklistMapper globalBlacklistMapper;
@@ -249,8 +250,8 @@ class PlayerServiceImplTest {
 
         // Empty queue → delete branch (NOT rightPushAll) — verify no transactional set up
         verify(redisTemplate, never()).execute(any(SessionCallback.class));
-        // ChatClient is never invoked when candidates list is empty (AI rerank shortcut)
-        verify(chatClient, never()).prompt();
+        // LlmClient is never invoked when candidates list is empty (AI rerank shortcut)
+        verify(llmClient, never()).complete(any(), anyString());
     }
 
     // ========================================================================
@@ -333,7 +334,7 @@ class PlayerServiceImplTest {
 
         // AI rerank: empty LLM response -> goes through applyRanking's catch
         // branch and returns candidates.stream().limit(20). NO exception.
-        when(chatClient.prompt().user(anyString()).call().content()).thenReturn("");
+        when(llmClient.complete(any(), anyString())).thenReturn("");
 
         // Play-url batch fetch: return empty map (no enrichment, no NPE)
         when(musicApiClient.getSongUrls(anyString(), anyList(), any()))
@@ -402,7 +403,7 @@ class PlayerServiceImplTest {
         banned.setValue("bannedartist");
         when(globalBlacklistMapper.selectList(any())).thenReturn(List.of(banned));
 
-        when(chatClient.prompt().user(anyString()).call().content()).thenReturn("");
+        when(llmClient.complete(any(), anyString())).thenReturn("");
         when(musicApiClient.getSongUrls(anyString(), anyList(), any())).thenReturn(java.util.Map.of());
         when(songMapper.selectList(any())).thenReturn(Collections.emptyList());
         when(platformSongMappingMapper.selectList(any())).thenReturn(Collections.emptyList());

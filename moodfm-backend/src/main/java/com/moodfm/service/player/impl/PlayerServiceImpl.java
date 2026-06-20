@@ -17,6 +17,8 @@ import com.moodfm.domain.vo.RadioQueueVO;
 import com.moodfm.domain.vo.SessionSummaryVO;
 import com.moodfm.domain.vo.SongVO;
 import com.moodfm.mapper.*;
+import com.moodfm.service.ai.LlmClient;
+import com.moodfm.service.ai.LlmFallbackMetrics;
 import com.moodfm.service.ai.MoodAnalysisService;
 import com.moodfm.service.embedding.EmbeddingService;
 import com.moodfm.service.platform.PlatformBindingService;
@@ -26,7 +28,6 @@ import com.moodfm.service.vector.QdrantService;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -59,7 +60,8 @@ public class PlayerServiceImpl implements PlayerService {
     private final AesUtil aesUtil;
     private final ObjectMapper objectMapper;
     private final StringRedisTemplate redisTemplate;
-    private final ChatClient chatClient;
+    private final LlmClient llmClient;
+    private final LlmFallbackMetrics llmFallbackMetrics;
     private final EmbeddingService embeddingService;
     private final QdrantService qdrantService;
     private final GlobalBlacklistMapper globalBlacklistMapper;
@@ -1162,10 +1164,11 @@ public class PlayerServiceImpl implements PlayerService {
         if (candidates.isEmpty()) return candidates;
         try {
             String prompt = buildRankingPrompt(candidates, mood);
-            String response = chatClient.prompt().user(prompt).call().content();
+            String response = llmClient.complete(null, prompt);
             return applyRanking(response, candidates, mood);
         } catch (Exception e) {
-            log.warn("AI ranking failed, using shuffle", e);
+            llmFallbackMetrics.songRankingFallback();
+            log.warn("song ranking fallback: reason={}, candidates={}", e.getMessage(), candidates.size());
             return candidates.stream().limit(20).collect(Collectors.toList());
         }
     }

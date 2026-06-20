@@ -2,20 +2,22 @@ package com.moodfm.service.ai.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.moodfm.ai.model.MoodParams;
+import com.moodfm.common.exception.LlmException;
 import com.moodfm.domain.dto.radio.MoodInputRequest;
+import com.moodfm.service.ai.LlmClient;
+import com.moodfm.service.ai.LlmFallbackMetrics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -24,8 +26,11 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class MoodAnalysisServiceImplTest {
 
-    @Mock(answer = Answers.RETURNS_DEEP_STUBS)
-    private ChatClient chatClient;
+    @Mock
+    private LlmClient llmClient;
+
+    @Mock
+    private LlmFallbackMetrics llmFallbackMetrics;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -33,19 +38,15 @@ class MoodAnalysisServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        service = new MoodAnalysisServiceImpl(chatClient, objectMapper);
+        service = new MoodAnalysisServiceImpl(llmClient, objectMapper, llmFallbackMetrics);
         ReflectionTestUtils.setField(service, "promptTemplate",
                 new ByteArrayResource("system template {{userInput}}".getBytes()));
     }
 
-    /** stub fluent chain to return given content; capture user input */
+    /** Stub llmClient.complete to return given content; capture the user argument. */
     private ArgumentCaptor<String> stubLlmContent(String content) {
         ArgumentCaptor<String> userCaptor = ArgumentCaptor.forClass(String.class);
-        when(chatClient.prompt()
-                .user(userCaptor.capture())
-                .system(anyString())
-                .call()
-                .content()).thenReturn(content);
+        when(llmClient.complete(anyString(), userCaptor.capture())).thenReturn(content);
         return userCaptor;
     }
 
@@ -81,7 +82,7 @@ class MoodAnalysisServiceImplTest {
         assertEquals(0.3, result.getMood().getTension(), 0.0001);
         assertEquals("通用", result.getSceneInferred());
         // LLM never invoked
-        verify(chatClient, never()).prompt();
+        verify(llmClient, never()).complete(any(), anyString());
     }
 
     @Test
@@ -118,11 +119,8 @@ class MoodAnalysisServiceImplTest {
 
     @Test
     void llmThrows_returnsDefault_andDoesNotPropagate() {
-        when(chatClient.prompt()
-                .user(anyString())
-                .system(anyString())
-                .call()
-                .content()).thenThrow(new RuntimeException("LLM down"));
+        when(llmClient.complete(anyString(), anyString()))
+                .thenThrow(new LlmException("LLM down"));
 
         MoodInputRequest req = new MoodInputRequest();
         req.setText("anything");
@@ -133,6 +131,8 @@ class MoodAnalysisServiceImplTest {
         assertEquals(0.5, result.getMood().getValence(), 0.0001);
         assertEquals(0.5, result.getMood().getEnergy(), 0.0001);
         assertEquals("通用", result.getSceneInferred());
+        // Fallback counter must be incremented exactly once
+        verify(llmFallbackMetrics).moodAnalysisFallback();
     }
 
     @Test
