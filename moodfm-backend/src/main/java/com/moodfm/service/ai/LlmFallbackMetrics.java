@@ -21,6 +21,7 @@ public class LlmFallbackMetrics {
     private final Counter moodAnalysisCounter;
     private final Counter songRankingCounter;
     private final Counter songFeatureCounter;
+    private final Counter weeklyReportCounter;
 
     public LlmFallbackMetrics(MeterRegistry meterRegistry) {
         this.moodAnalysisCounter = Counter.builder(METRIC_NAME)
@@ -35,6 +36,10 @@ public class LlmFallbackMetrics {
                 .tag(TAG_STAGE, "song_feature")
                 .description("Number of times song feature enrichment fell back")
                 .register(meterRegistry);
+        this.weeklyReportCounter = Counter.builder(METRIC_NAME)
+                .tag(TAG_STAGE, "weekly_report")
+                .description("Number of times weekly report narrative fell back to default")
+                .register(meterRegistry);
     }
 
     /** Increment the mood-analysis fallback counter. */
@@ -47,8 +52,13 @@ public class LlmFallbackMetrics {
         songRankingCounter.increment();
     }
 
-    /** Increment the song-feature fallback counter (reserved for Task 2). */
+    /** Increment the song-feature fallback counter. */
     public void songFeatureFallback() {
         songFeatureCounter.increment();
+    }
+
+    /** Increment the weekly-report fallback counter. */
+    public void weeklyReportFallback() {
+        weeklyReportCounter.increment();
     }
 }

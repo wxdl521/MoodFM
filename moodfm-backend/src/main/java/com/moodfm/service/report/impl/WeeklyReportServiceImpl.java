@@ -10,10 +10,11 @@ import com.moodfm.mapper.PlayRecordMapper;
 import com.moodfm.mapper.UserMapper;
 import com.moodfm.mapper.WeeklyReportMapper;
 import com.moodfm.common.exception.BizException;
+import com.moodfm.service.ai.LlmClient;
+import com.moodfm.service.ai.LlmFallbackMetrics;
 import com.moodfm.service.report.WeeklyReportService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -39,7 +40,8 @@ public class WeeklyReportServiceImpl implements WeeklyReportService {
     private final PlayRecordMapper playRecordMapper;
     private final MoodSessionMapper moodSessionMapper;
     private final UserMapper userMapper;
-    private final ChatClient chatClient;
+    private final LlmClient llmClient;
+    private final LlmFallbackMetrics llmFallbackMetrics;
     private final ObjectMapper objectMapper;
 
     @Value("classpath:prompts/weekly-report.txt")
@@ -194,11 +196,11 @@ public class WeeklyReportServiceImpl implements WeeklyReportService {
 
     // ─── AI Call ──────────────────────────────────────────────────
 
-    private AiNarrative callAI(String weekLabel, String dateRange,
-                                long tracks, String listenTime, String topGenre,
-                                String moodCn, String valence, String energy,
-                                String topSong, String topArtist, String topPlayCount,
-                                String newDiscovered) {
+    AiNarrative callAI(String weekLabel, String dateRange,
+                       long tracks, String listenTime, String topGenre,
+                       String moodCn, String valence, String energy,
+                       String topSong, String topArtist, String topPlayCount,
+                       String newDiscovered) {
         try {
             String prompt = new String(promptResource.getInputStream().readAllBytes(), StandardCharsets.UTF_8)
                     .replace("{{weekLabel}}", weekLabel)
@@ -214,10 +216,7 @@ public class WeeklyReportServiceImpl implements WeeklyReportService {
                     .replace("{{topPlayCount}}", topPlayCount)
                     .replace("{{newDiscovered}}", newDiscovered);
 
-            String response = chatClient.prompt()
-                    .user(prompt)
-                    .call()
-                    .content();
+            String response = llmClient.complete(null, prompt);
 
             String raw = extractJson(response);
             JsonNode node = objectMapper.readTree(raw);
@@ -230,14 +229,15 @@ public class WeeklyReportServiceImpl implements WeeklyReportService {
                     node.path("quote").asText("")
             );
         } catch (Exception e) {
-            log.warn("Weekly report AI call failed: {}", e.getMessage());
+            llmFallbackMetrics.weeklyReportFallback();
+            log.warn("Weekly report AI call failed [{}]: {}", weekLabel, e.getMessage());
             return new AiNarrative("quiet", "light.", "静听一周", "", "", "");
         }
     }
 
-    private record AiNarrative(String headlineWord, String headlineWord2,
-                                String titleCn, String summary,
-                                String essayBody, String quote) {}
+    record AiNarrative(String headlineWord, String headlineWord2,
+                       String titleCn, String summary,
+                       String essayBody, String quote) {}
 
     // ─── Deserialization ──────────────────────────────────────────
 
