@@ -26,6 +26,7 @@ import com.moodfm.service.ai.MoodAnalysisService;
 import com.moodfm.service.embedding.EmbeddingService;
 import com.moodfm.service.enrich.SongFeatureService;
 import com.moodfm.service.platform.PlatformBindingService;
+import com.moodfm.service.player.impl.recall.SongEmbeddingTextBuilder;
 import com.moodfm.service.user.UserService;
 import com.moodfm.service.vector.QdrantService;
 import com.moodfm.service.vector.VectorRecallMetrics;
@@ -98,6 +99,7 @@ class PlayerServiceImplTest {
     @Mock private VectorRecallMetrics vectorRecallMetrics;
     @Mock private GlobalBlacklistMapper globalBlacklistMapper;
     @Mock private SongFeatureService songFeatureService;
+    @Mock private SongEmbeddingTextBuilder songEmbeddingTextBuilder;
 
     @Mock private ValueOperations<String, String> valueOps;
     @Mock private ListOperations<String, String> listOps;
@@ -123,6 +125,10 @@ class PlayerServiceImplTest {
         // Default Redis stubs used across most tests (lenient: unused stubs OK).
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
         when(redisTemplate.opsForList()).thenReturn(listOps);
+
+        // SongEmbeddingTextBuilder stubs — lenient so tests that don't exercise vector path are OK.
+        lenient().when(songEmbeddingTextBuilder.buildVectorQueryText(any(), any(), any())).thenReturn("music");
+        lenient().when(songEmbeddingTextBuilder.buildSongEmbeddingText(any())).thenReturn("");
     }
 
     // ========================================================================

@@ -25,6 +25,7 @@ import com.moodfm.service.enrich.SongFeatureService;
 import com.moodfm.service.platform.PlatformBindingService;
 import com.moodfm.service.player.PlayerService;
 import com.moodfm.service.user.UserService;
+import com.moodfm.service.player.impl.recall.SongEmbeddingTextBuilder;
 import com.moodfm.service.vector.QdrantService;
 import com.moodfm.service.vector.VectorRecallMetrics;
 import jakarta.annotation.PreDestroy;
@@ -70,6 +71,7 @@ public class PlayerServiceImpl implements PlayerService {
     private final VectorRecallMetrics vectorRecallMetrics;
     private final GlobalBlacklistMapper globalBlacklistMapper;
     private final SongFeatureService songFeatureService;
+    private final SongEmbeddingTextBuilder songEmbeddingTextBuilder;
 
     /** Configurable total timeout (seconds) for concurrent song-feature enrichment in persistSongs. */
     @Value("${song.feature.enrich.timeout-seconds:8}")
@@ -544,7 +546,7 @@ public class PlayerServiceImpl implements PlayerService {
         String exploreKw = (genres.isEmpty() ? "indie" : genres.get(0)) + " 新歌";
 
         // Build vector recall query text from mood keywords
-        String vectorQueryText = buildVectorQueryText(mood, genres, vibes);
+        String vectorQueryText = songEmbeddingTextBuilder.buildVectorQueryText(mood, genres, vibes);
 
         // T1-1: 去重表 + 来源权重表（同一首歌出现在多路时取最大权重）
         LinkedHashMap<String, SongVO> dedup = new LinkedHashMap<>();
@@ -1226,24 +1228,6 @@ public class PlayerServiceImpl implements PlayerService {
     // ===================== Vector Recall (6th path) =====================
 
     /**
-     * Build a text query for vector embedding from mood params + user preferences.
-     */
-    private String buildVectorQueryText(MoodParams mood, List<String> genres, List<String> vibes) {
-        StringBuilder sb = new StringBuilder();
-        if (mood.getSceneInferred() != null && !mood.getSceneInferred().isBlank()) {
-            sb.append(mood.getSceneInferred()).append(" ");
-        }
-        if (genres != null && !genres.isEmpty()) {
-            sb.append(String.join(" ", genres.subList(0, Math.min(3, genres.size())))).append(" ");
-        }
-        if (vibes != null && !vibes.isEmpty()) {
-            sb.append(String.join(" ", vibes.subList(0, Math.min(3, vibes.size()))));
-        }
-        String text = sb.toString().trim();
-        return text.isEmpty() ? "music" : text;
-    }
-
-    /**
      * 6th recall path: vector similarity search via Qdrant.
      * Gracefully returns empty list if Qdrant is unavailable.
      */
@@ -1273,98 +1257,11 @@ public class PlayerServiceImpl implements PlayerService {
     }
 
     /**
-     * Build the song-side embedding text from a features JSON.
-     * The resulting text is structurally aligned with the query-side {@link #buildVectorQueryText}:
-     * both use genre + mood/vibe words + energy-level word + language word in Chinese.
-     * <p>
-     * Format: {@code "华语流行 夜晚 松弛 低能量 中文"}
-     * <p>
-     * Returns empty string when features are null/blank/unparseable — callers must
-     * skip indexing in that case (do NOT fall back to song-name text).
-     * <p>
-     * Package-visible for unit testing.
-     */
-    String buildSongEmbeddingText(String featuresJson) {
-        if (featuresJson == null || featuresJson.isBlank()) return "";
-        try {
-            JsonNode node = objectMapper.readTree(featuresJson);
-
-            StringBuilder sb = new StringBuilder();
-
-            // genre
-            String genre = node.path("genre").asText(null);
-            if (genre != null && !genre.isBlank()) {
-                sb.append(genre).append(" ");
-            }
-
-            // mood_tags (array of strings)
-            JsonNode tagsNode = node.path("mood_tags");
-            if (tagsNode.isArray()) {
-                for (JsonNode tag : tagsNode) {
-                    String t = tag.asText("").trim();
-                    if (!t.isEmpty()) sb.append(t).append(" ");
-                }
-            }
-
-            // energy-level word derived from energy value (0‥1) or tempo_bucket
-            String energyWord = resolveEnergyWord(node);
-            if (energyWord != null) sb.append(energyWord).append(" ");
-
-            // language word
-            String langWord = resolveLanguageWord(node.path("language").asText(null));
-            if (langWord != null) sb.append(langWord).append(" ");
-
-            return sb.toString().trim();
-        } catch (Exception e) {
-            log.debug("buildSongEmbeddingText parse failed, skipping index: {}", e.getMessage());
-            return "";
-        }
-    }
-
-    /**
-     * Derive an energy-level Chinese word from features.
-     * Uses the numeric {@code energy} field if present; falls back to {@code tempo_bucket}.
-     */
-    private String resolveEnergyWord(JsonNode node) {
-        // Try numeric energy first (0..1 scale)
-        JsonNode energyNode = node.path("energy");
-        if (!energyNode.isMissingNode() && energyNode.isNumber()) {
-            double energy = energyNode.asDouble();
-            if (energy >= 0.7) return "高能量";
-            if (energy >= 0.4) return "中能量";
-            return "低能量";
-        }
-        // Fallback: tempo_bucket
-        String bucket = node.path("tempo_bucket").asText(null);
-        if (bucket == null || bucket.isBlank()) return null;
-        return switch (bucket.toLowerCase()) {
-            case "high", "fast" -> "高能量";
-            case "low", "slow" -> "低能量";
-            default -> "中能量"; // mid, moderate, etc.
-        };
-    }
-
-    /**
-     * Map a language code to a Chinese language word.
-     */
-    private String resolveLanguageWord(String lang) {
-        if (lang == null || lang.isBlank()) return null;
-        return switch (lang.toLowerCase()) {
-            case "zh", "zh-cn", "zh-tw" -> "中文";
-            case "en" -> "英文";
-            case "ja" -> "日文";
-            case "ko" -> "韩文";
-            case "instrumental" -> "器乐";
-            default -> null;
-        };
-    }
-
-    /**
      * Index a song into Qdrant for vector-based recall.
      * Generates an embedding from the song's emotion/features description text
      * (structurally aligned with the query side) and upserts it.
      * <p>
-     * If {@code featuresJson} is null/blank/unparseable (i.e. {@link #buildSongEmbeddingText}
+     * If {@code featuresJson} is null/blank/unparseable (i.e. {@link com.moodfm.service.player.impl.recall.SongEmbeddingTextBuilder#buildSongEmbeddingText}
      * returns empty), indexing is skipped — we never fall back to song-name text.
      * Wrapped in try-catch — failure here does not affect song persistence.
      *
@@ -1373,7 +1270,7 @@ public class PlayerServiceImpl implements PlayerService {
      */
     private void indexSongForVectorSearch(Long songId, String featuresJson) {
         try {
-            String text = buildSongEmbeddingText(featuresJson);
+            String text = songEmbeddingTextBuilder.buildSongEmbeddingText(featuresJson);
             if (text.isEmpty()) return; // no features → skip, do NOT index song-name text
 
             float[] embedding = embeddingService.embed(text);
