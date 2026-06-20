@@ -17,4 +17,5 @@ public class SongVO {
     private String playUrl;
     private String recommendReason; // AI 推荐解释
     private String urlSource; // "qqmusic" | "netease_fallback" — set when play URL comes from a different platform
+    private String features;  // JSON string from Song.features; null if not yet enriched
 }

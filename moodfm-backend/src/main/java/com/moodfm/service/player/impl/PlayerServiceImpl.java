@@ -85,6 +85,25 @@ public class PlayerServiceImpl implements PlayerService {
     private static final int REFILL_THRESHOLD = 5;
     private static final int RERANK_NEXT_N = 5;
 
+    // ===================== Recall scoring constants (T1-1 + T1-2) =====================
+
+    // Source weights — adjust here to tune recall blend
+    private static final double W_LIKED     = 1.0;
+    private static final double W_VECTOR    = 0.9;
+    private static final double W_RECOMMEND = 0.8;
+    private static final double W_GENRE     = 0.6;
+    private static final double W_VIBE      = 0.6;
+    private static final double W_EXPLORE   = 0.4;
+
+    // Emotion-match score constants
+    /** Score returned when features are null/unparseable — neutral, neither reward nor penalise */
+    static final double UNKNOWN_EMOTION    = 0.5;
+    private static final double GENRE_BONUS     = 0.3;
+    private static final double LANGUAGE_BONUS  = 0.2;
+    private static final double AVOID_PENALTY   = 10.0;
+    /** Small random jitter to break exact ties without overriding structural order */
+    private static final double JITTER          = 0.05;
+
     // ===================== getRecentSessions =====================
 
     @Override
@@ -505,7 +524,9 @@ public class PlayerServiceImpl implements PlayerService {
     }
 
     /**
-     * 6 路并行召回 + 反馈过滤(Feature 4) + 用户偏好(Feature 5) + 向量召回(Feature 6)
+     * 6 路并行召回 + 来源加权 + 情绪匹配打分 + 反馈过滤(Feature 4) + 用户偏好(Feature 5) + 向量召回(Feature 6)
+     * T1-1: 来源加权（替换 Collections.shuffle）
+     * T1-2: 情绪匹配打分
      */
     private List<SongVO> recallSongs(String platform, String cookie, MoodParams mood, Long userId) {
         // Feature 5: 合并用户偏好到搜索关键词
@@ -523,8 +544,11 @@ public class PlayerServiceImpl implements PlayerService {
         // Build vector recall query text from mood keywords
         String vectorQueryText = buildVectorQueryText(mood, genres, vibes);
 
+        // T1-1: 去重表 + 来源权重表（同一首歌出现在多路时取最大权重）
+        LinkedHashMap<String, SongVO> dedup = new LinkedHashMap<>();
+        Map<String, Double> sourceWeight = new LinkedHashMap<>();
+
         // 6 路并行（Virtual Thread） — 原 5 路 + 向量召回
-        List<SongVO> all = new ArrayList<>();
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             CompletableFuture<List<SongVO>> likedFut     = CompletableFuture.supplyAsync(() -> fetchLiked(platform, cookie), executor);
             CompletableFuture<List<SongVO>> recommendFut = CompletableFuture.supplyAsync(() -> fetchRecommend(platform, cookie), executor);
@@ -535,30 +559,26 @@ public class PlayerServiceImpl implements PlayerService {
             try {
                 CompletableFuture.allOf(likedFut, recommendFut, genreFut, vibeFut, exploreFut, vectorFut)
                         .get(12, TimeUnit.SECONDS);
-                all.addAll(safeGet(likedFut,     "liked"));
-                all.addAll(safeGet(recommendFut, "recommend"));
-                all.addAll(safeGet(genreFut,     "genre-search"));
-                all.addAll(safeGet(vibeFut,      "vibe-search"));
-                all.addAll(safeGet(exploreFut,   "explore-search"));
-                all.addAll(safeGet(vectorFut,    "vector-search"));
+                addSource(dedup, sourceWeight, safeGet(likedFut,     "liked"),         W_LIKED);
+                addSource(dedup, sourceWeight, safeGet(recommendFut, "recommend"),     W_RECOMMEND);
+                addSource(dedup, sourceWeight, safeGet(genreFut,     "genre-search"),  W_GENRE);
+                addSource(dedup, sourceWeight, safeGet(vibeFut,      "vibe-search"),   W_VIBE);
+                addSource(dedup, sourceWeight, safeGet(exploreFut,   "explore-search"),W_EXPLORE);
+                addSource(dedup, sourceWeight, safeGet(vectorFut,    "vector-search"), W_VECTOR);
             } catch (Exception e) {
                 log.warn("Parallel recall timeout/error, using partial results", e);
-                all.addAll(safeGet(likedFut,     "liked"));
-                all.addAll(safeGet(recommendFut, "recommend"));
-                all.addAll(safeGet(genreFut,     "genre"));
-                all.addAll(safeGet(vectorFut,    "vector-search"));
+                addSource(dedup, sourceWeight, safeGet(likedFut,     "liked"),         W_LIKED);
+                addSource(dedup, sourceWeight, safeGet(recommendFut, "recommend"),     W_RECOMMEND);
+                addSource(dedup, sourceWeight, safeGet(genreFut,     "genre"),         W_GENRE);
+                addSource(dedup, sourceWeight, safeGet(vectorFut,    "vector-search"), W_VECTOR);
             }
         }
 
-        // 去重（按 platformSongId）+ 打乱 + 限制候选数
-        Map<String, SongVO> dedup = new LinkedHashMap<>();
-        for (SongVO s : all) {
-            if (s.getPlatformSongId() != null && !dedup.containsKey(s.getPlatformSongId())) {
-                dedup.put(s.getPlatformSongId(), s);
-            }
-        }
-        List<SongVO> deduped = new ArrayList<>(dedup.values());
-        Collections.shuffle(deduped);
+        // Step B: 批量回填已入库歌曲的 features（候选本身不带特征）
+        backfillFeatures(dedup, platform);
+
+        // T1-1 + T1-2: 打分排序，替换 Collections.shuffle
+        List<SongVO> deduped = scoreAndSort(dedup, sourceWeight, mood);
 
         // Feature 4: 反馈评分过滤
         if (userId != null) {
@@ -574,6 +594,170 @@ public class PlayerServiceImpl implements PlayerService {
         deduped = filterGlobalBlacklist(deduped);
 
         return deduped.stream().limit(60).collect(Collectors.toList());
+    }
+
+    /**
+     * 将 list 中每首歌按来源权重登记到 dedup + sourceWeight。
+     * 首次出现时写入 dedup；多次出现时取最大权重（merge with Math::max）。
+     */
+    private void addSource(LinkedHashMap<String, SongVO> dedup,
+                           Map<String, Double> sourceWeight,
+                           List<SongVO> list, double weight) {
+        for (SongVO s : list) {
+            if (s.getPlatformSongId() == null) continue;
+            dedup.putIfAbsent(s.getPlatformSongId(), s);
+            sourceWeight.merge(s.getPlatformSongId(), weight, Math::max);
+        }
+    }
+
+    /**
+     * Step B: 批量把已入库歌曲的 features 回填到对应候选 SongVO。
+     * 查询路径：platformSongId IN (...) → platform_song_mapping → song.features
+     * 查不到的候选 features 保持 null（新歌，下次入库后有特征）。
+     */
+    private void backfillFeatures(LinkedHashMap<String, SongVO> dedup, String platform) {
+        if (dedup.isEmpty()) return;
+        try {
+            List<String> platformSongIds = new ArrayList<>(dedup.keySet());
+            List<PlatformSongMapping> mappings = platformSongMappingMapper.selectList(
+                    new LambdaQueryWrapper<PlatformSongMapping>()
+                            .eq(PlatformSongMapping::getPlatform, platform)
+                            .in(PlatformSongMapping::getPlatformSongId, platformSongIds));
+            if (mappings.isEmpty()) return;
+
+            // platformSongId → songId
+            Map<String, Long> pidToSongId = new HashMap<>();
+            for (PlatformSongMapping m : mappings) {
+                pidToSongId.put(m.getPlatformSongId(), m.getSongId());
+            }
+
+            List<Long> songIds = new ArrayList<>(new HashSet<>(pidToSongId.values()));
+            List<Song> songs = songMapper.selectBatchIds(songIds);
+            if (songs.isEmpty()) return;
+
+            // songId → features JSON
+            Map<Long, String> songFeatureMap = new HashMap<>();
+            for (Song s : songs) {
+                if (s.getFeatures() != null && !s.getFeatures().isBlank()) {
+                    songFeatureMap.put(s.getId(), s.getFeatures());
+                }
+            }
+
+            for (Map.Entry<String, SongVO> entry : dedup.entrySet()) {
+                Long songId = pidToSongId.get(entry.getKey());
+                if (songId == null) continue;
+                String featuresJson = songFeatureMap.get(songId);
+                if (featuresJson != null) {
+                    entry.getValue().setFeatures(featuresJson);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Features backfill failed, continuing without features", e);
+        }
+    }
+
+    /**
+     * T1-1 + T1-2: 对候选按（来源权重 + 情绪匹配分 − avoid惩罚 + 小抖动）降序排序。
+     * Package-visible for direct unit testing in RecallScoringTest.
+     */
+    List<SongVO> scoreAndSort(LinkedHashMap<String, SongVO> dedup,
+                              Map<String, Double> sourceWeight,
+                              MoodParams mood) {
+        List<SongVO> candidates = new ArrayList<>(dedup.values());
+        candidates.sort((a, b) -> {
+            double scoreA = computeTotal(a, sourceWeight, mood);
+            double scoreB = computeTotal(b, sourceWeight, mood);
+            return Double.compare(scoreB, scoreA); // descending
+        });
+        return candidates;
+    }
+
+    private double computeTotal(SongVO song, Map<String, Double> sourceWeight, MoodParams mood) {
+        String id = song.getPlatformSongId();
+        double sw = sourceWeight.getOrDefault(id, 0.0);
+        double em = emotionMatchScore(song.getFeatures(), mood);
+        double penalty = hitsAvoid(song, mood) ? AVOID_PENALTY : 0.0;
+        double jitter = Math.random() * JITTER;
+        return sw + em - penalty + jitter;
+    }
+
+    /**
+     * T1-2: 计算歌曲与当前心情的情绪匹配分。
+     * features 为 null/解析失败 → 返回中性基线 UNKNOWN_EMOTION=0.5。
+     * 距离 = sqrt((moodValence-songValence)^2 + (moodEnergy-songEnergy)^2)，
+     * 归一化 emotion = 1 - dist/sqrt(2)，夹到 [0,1]。
+     * genre 命中 +GENRE_BONUS，language 命中 +LANGUAGE_BONUS（可叠加）。
+     * Package-visible for direct unit testing.
+     */
+    double emotionMatchScore(String featuresJson, MoodParams mood) {
+        if (featuresJson == null || featuresJson.isBlank()) return UNKNOWN_EMOTION;
+        if (mood == null || mood.getMood() == null) return UNKNOWN_EMOTION;
+        try {
+            JsonNode node = objectMapper.readTree(featuresJson);
+            double songValence = node.path("valence").asDouble(0.5);
+            double songEnergy  = node.path("energy").asDouble(0.5);
+
+            MoodParams.MoodVector mv = mood.getMood();
+            double dv = mv.getValence() - songValence;
+            double de = mv.getEnergy()  - songEnergy;
+            double dist = Math.sqrt(dv * dv + de * de);
+            double emotion = Math.max(0.0, Math.min(1.0, 1.0 - dist / Math.sqrt(2.0)));
+
+            double bonus = 0.0;
+            // Genre bonus
+            String songGenre = node.path("genre").asText(null);
+            List<String> preferredGenres = mood.getPreferredGenres();
+            if (songGenre != null && preferredGenres != null && preferredGenres.contains(songGenre)) {
+                bonus += GENRE_BONUS;
+            }
+            // Language bonus
+            String songLang = node.path("language").asText(null);
+            List<String> preferredLanguages = mood.getPreferredLanguages();
+            if (songLang != null && preferredLanguages != null && preferredLanguages.contains(songLang)) {
+                bonus += LANGUAGE_BONUS;
+            }
+
+            return emotion + bonus;
+        } catch (Exception e) {
+            return UNKNOWN_EMOTION;
+        }
+    }
+
+    /**
+     * T1-2: 判断歌曲是否命中 avoidKeywords（歌名/歌手名/mood_tags 任一子串匹配，大小写不敏感）。
+     * 命中的候选在总分里扣 AVOID_PENALTY=10.0（直接沉底，等效剔除但保留以防候选耗尽）。
+     * Package-visible for direct unit testing.
+     */
+    boolean hitsAvoid(SongVO song, MoodParams mood) {
+        List<String> avoidKeywords = mood != null ? mood.getAvoidKeywords() : null;
+        if (avoidKeywords == null || avoidKeywords.isEmpty()) return false;
+
+        String title  = song.getTitle()  != null ? song.getTitle().toLowerCase()  : "";
+        String artist = song.getArtist() != null ? song.getArtist().toLowerCase() : "";
+
+        // Also check mood_tags from features JSON
+        List<String> moodTags = new ArrayList<>();
+        if (song.getFeatures() != null && !song.getFeatures().isBlank()) {
+            try {
+                JsonNode node = objectMapper.readTree(song.getFeatures());
+                JsonNode tagsNode = node.path("mood_tags");
+                if (tagsNode.isArray()) {
+                    for (JsonNode tag : tagsNode) {
+                        moodTags.add(tag.asText("").toLowerCase());
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        for (String kw : avoidKeywords) {
+            if (kw == null || kw.isBlank()) continue;
+            String lkw = kw.toLowerCase();
+            if (title.contains(lkw) || artist.contains(lkw)) return true;
+            for (String tag : moodTags) {
+                if (tag.contains(lkw)) return true;
+            }
+        }
+        return false;
     }
 
     // ===================== Feature 4: 反馈评分过滤 =====================
@@ -1122,6 +1306,7 @@ public class PlayerServiceImpl implements PlayerService {
                     .coverUrl(song.getCoverUrl())
                     .platform(mapping != null ? mapping.getPlatform() : null)
                     .platformSongId(mapping != null ? mapping.getPlatformSongId() : null)
+                    .features(song.getFeatures())
                     .build());
         }
         return result;
@@ -1262,7 +1447,7 @@ public class PlayerServiceImpl implements PlayerService {
                 if (idx < 0 || idx >= candidates.size()) continue;
                 SongVO song = candidates.get(idx);
                 String reason = item.path("reason").asText("");
-                // 拷贝并注入 reason
+                // 拷贝并注入 reason（保留 features 供下游使用）
                 ranked.add(SongVO.builder()
                         .id(song.getId())
                         .title(song.getTitle())
@@ -1273,6 +1458,7 @@ public class PlayerServiceImpl implements PlayerService {
                         .platform(song.getPlatform())
                         .platformSongId(song.getPlatformSongId())
                         .recommendReason(reason)
+                        .features(song.getFeatures())
                         .build());
             }
 
