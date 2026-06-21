@@ -26,6 +26,7 @@ import com.moodfm.service.ai.MoodAnalysisService;
 import com.moodfm.service.embedding.EmbeddingService;
 import com.moodfm.service.enrich.SongFeatureService;
 import com.moodfm.service.platform.PlatformBindingService;
+import com.moodfm.service.player.impl.catalog.SongCatalogService;
 import com.moodfm.service.player.impl.playurl.PlayUrlService;
 import com.moodfm.service.player.impl.ranking.AiRankingService;
 import com.moodfm.service.player.impl.recall.SongEmbeddingTextBuilder;
@@ -109,6 +110,8 @@ class PlayerServiceImplTest {
     /** Real ObjectMapper: cleaner than mocking serialize / deserialize semantics. */
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    private SongCatalogService songCatalogService;
+
     @InjectMocks private PlayerServiceImpl playerService;
 
     @BeforeEach
@@ -119,10 +122,13 @@ class PlayerServiceImplTest {
         field.setAccessible(true);
         field.set(playerService, objectMapper);
 
-        // @Value("${song.feature.enrich.timeout-seconds:8}") is not injected by Mockito
-        // (no Spring context), so default is 0. Set a sensible default so most tests
-        // complete the async enrichment without timing out.
-        ReflectionTestUtils.setField(playerService, "enrichTimeoutSeconds", 8);
+        // Wire a real SongCatalogService built from the existing leaf mocks.
+        // enrichTimeoutSeconds moved here from PlayerServiceImpl; default 8 so async enrichment
+        // completes without timing out in most tests.
+        songCatalogService = new SongCatalogService(songMapper, platformSongMappingMapper, songFeatureService,
+                embeddingService, qdrantService, vectorRecallMetrics, songEmbeddingTextBuilder);
+        ReflectionTestUtils.setField(songCatalogService, "enrichTimeoutSeconds", 8);
+        ReflectionTestUtils.setField(playerService, "songCatalogService", songCatalogService);
 
         // Default Redis stubs used across most tests (lenient: unused stubs OK).
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
@@ -646,7 +652,7 @@ class PlayerServiceImplTest {
     @Test
     void persistSongs_enrichmentTimeout_returnsWithinCapNotBlockedBySlowLlm() throws Exception {
         // --- Set the timeout to 1 second so the test runs fast ---
-        ReflectionTestUtils.setField(playerService, "enrichTimeoutSeconds", 1);
+        ReflectionTestUtils.setField(songCatalogService, "enrichTimeoutSeconds", 1);
 
         // --- Wiring identical to test 6 but with a slow enrich() stub ---
         when(moodAnalysisService.analyze(any())).thenReturn(MoodParams.defaultParams());
