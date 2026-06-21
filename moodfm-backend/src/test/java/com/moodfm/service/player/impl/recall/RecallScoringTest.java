@@ -1,24 +1,19 @@
-package com.moodfm.service.player.impl;
+package com.moodfm.service.player.impl.recall;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.moodfm.ai.model.MoodParams;
 import com.moodfm.domain.vo.SongVO;
 import com.moodfm.mapper.FeedbackEventMapper;
 import com.moodfm.mapper.GlobalBlacklistMapper;
-import com.moodfm.mapper.MoodSessionMapper;
 import com.moodfm.mapper.PlatformSongMappingMapper;
 import com.moodfm.mapper.SongMapper;
 import com.moodfm.mapper.UserProfileMapper;
-import com.moodfm.service.ai.LlmClient;
-import com.moodfm.service.ai.LlmFallbackMetrics;
-import com.moodfm.service.ai.MoodAnalysisService;
 import com.moodfm.service.embedding.EmbeddingService;
-import com.moodfm.service.enrich.SongFeatureService;
-import com.moodfm.service.platform.PlatformBindingService;
+import com.moodfm.service.player.impl.catalog.SongCatalogService;
 import com.moodfm.service.user.UserService;
 import com.moodfm.service.vector.QdrantService;
+import com.moodfm.service.vector.VectorRecallMetrics;
 import com.moodfm.client.music.MusicApiClient;
-import com.moodfm.common.util.AesUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,7 +22,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -40,39 +34,34 @@ import static org.junit.jupiter.api.Assertions.*;
  * Unit tests for the emotionMatchScore / hitsAvoid / source-weighted scoring
  * logic added in Task 3 (T1-1 + T1-2).
  *
- * All methods under test are package-visible inside PlayerServiceImpl so this
+ * All methods under test are package-visible inside CandidateRecallService so this
  * test class sits in the same package.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class RecallScoringTest {
 
-    // All collaborators mocked so @InjectMocks can build PlayerServiceImpl
-    @Mock private MoodAnalysisService moodAnalysisService;
-    @Mock private PlatformBindingService platformBindingService;
+    // All collaborators mocked so @InjectMocks can build CandidateRecallService
     @Mock private MusicApiClient musicApiClient;
-    @Mock private MoodSessionMapper sessionMapper;
-    @Mock private FeedbackEventMapper feedbackEventMapper;
     @Mock private SongMapper songMapper;
     @Mock private PlatformSongMappingMapper platformSongMappingMapper;
+    @Mock private FeedbackEventMapper feedbackEventMapper;
     @Mock private UserProfileMapper userProfileMapper;
     @Mock private UserService userService;
-    @Mock private AesUtil aesUtil;
-    @Mock private StringRedisTemplate redisTemplate;
-    @Mock private LlmClient llmClient;
-    @Mock private LlmFallbackMetrics llmFallbackMetrics;
+    @Mock private GlobalBlacklistMapper globalBlacklistMapper;
     @Mock private EmbeddingService embeddingService;
     @Mock private QdrantService qdrantService;
-    @Mock private GlobalBlacklistMapper globalBlacklistMapper;
-    @Mock private SongFeatureService songFeatureService;
+    @Mock private VectorRecallMetrics vectorRecallMetrics;
+    @Mock private SongEmbeddingTextBuilder songEmbeddingTextBuilder;
+    @Mock private SongCatalogService songCatalogService;
 
     @InjectMocks
-    private PlayerServiceImpl service;
+    private CandidateRecallService service;
 
     @BeforeEach
     void setUp() throws Exception {
         // Inject a real ObjectMapper so JSON parsing inside the scoring methods works
-        var field = PlayerServiceImpl.class.getDeclaredField("objectMapper");
+        var field = CandidateRecallService.class.getDeclaredField("objectMapper");
         field.setAccessible(true);
         field.set(service, new ObjectMapper());
     }
@@ -85,7 +74,7 @@ class RecallScoringTest {
     void emotionMatchScore_nullFeatures_returnsNeutral() {
         MoodParams mood = buildMood(0.2, 0.3, null, null);
         double score = service.emotionMatchScore(null, mood);
-        assertEquals(PlayerServiceImpl.UNKNOWN_EMOTION, score, 1e-9,
+        assertEquals(CandidateRecallService.UNKNOWN_EMOTION, score, 1e-9,
                 "null features should return UNKNOWN_EMOTION=0.5");
     }
 
@@ -93,7 +82,7 @@ class RecallScoringTest {
     void emotionMatchScore_blankFeatures_returnsNeutral() {
         MoodParams mood = buildMood(0.5, 0.5, null, null);
         double score = service.emotionMatchScore("", mood);
-        assertEquals(PlayerServiceImpl.UNKNOWN_EMOTION, score, 1e-9,
+        assertEquals(CandidateRecallService.UNKNOWN_EMOTION, score, 1e-9,
                 "blank features should return UNKNOWN_EMOTION=0.5");
     }
 
@@ -101,7 +90,7 @@ class RecallScoringTest {
     void emotionMatchScore_invalidJson_returnsNeutral() {
         MoodParams mood = buildMood(0.5, 0.5, null, null);
         double score = service.emotionMatchScore("not-json!!!", mood);
-        assertEquals(PlayerServiceImpl.UNKNOWN_EMOTION, score, 1e-9,
+        assertEquals(CandidateRecallService.UNKNOWN_EMOTION, score, 1e-9,
                 "invalid JSON should return UNKNOWN_EMOTION=0.5");
     }
 
@@ -110,7 +99,7 @@ class RecallScoringTest {
         // mood.getMood() == null → can't compute distance
         MoodParams mood = new MoodParams();
         double score = service.emotionMatchScore("{\"valence\":0.5,\"energy\":0.5}", mood);
-        assertEquals(PlayerServiceImpl.UNKNOWN_EMOTION, score, 1e-9,
+        assertEquals(CandidateRecallService.UNKNOWN_EMOTION, score, 1e-9,
                 "null MoodVector should return UNKNOWN_EMOTION=0.5");
     }
 

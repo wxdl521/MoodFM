@@ -29,6 +29,7 @@ import com.moodfm.service.platform.PlatformBindingService;
 import com.moodfm.service.player.impl.catalog.SongCatalogService;
 import com.moodfm.service.player.impl.playurl.PlayUrlService;
 import com.moodfm.service.player.impl.ranking.AiRankingService;
+import com.moodfm.service.player.impl.recall.CandidateRecallService;
 import com.moodfm.service.player.impl.recall.SongEmbeddingTextBuilder;
 import com.moodfm.service.user.UserService;
 import com.moodfm.service.vector.QdrantService;
@@ -129,6 +130,15 @@ class PlayerServiceImplTest {
                 embeddingService, qdrantService, vectorRecallMetrics, songEmbeddingTextBuilder);
         ReflectionTestUtils.setField(songCatalogService, "enrichTimeoutSeconds", 8);
         ReflectionTestUtils.setField(playerService, "songCatalogService", songCatalogService);
+
+        // Wire a real CandidateRecallService from the existing leaf mocks (recall extracted in Task 5).
+        // Reuses the real songCatalogService above for fetchVectorSimilar's VO mapping.
+        CandidateRecallService candidateRecallService = new CandidateRecallService(
+                musicApiClient, songMapper, platformSongMappingMapper, feedbackEventMapper,
+                userProfileMapper, userService, globalBlacklistMapper, embeddingService,
+                qdrantService, vectorRecallMetrics, objectMapper, songEmbeddingTextBuilder,
+                songCatalogService);
+        ReflectionTestUtils.setField(playerService, "candidateRecallService", candidateRecallService);
 
         // Default Redis stubs used across most tests (lenient: unused stubs OK).
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
