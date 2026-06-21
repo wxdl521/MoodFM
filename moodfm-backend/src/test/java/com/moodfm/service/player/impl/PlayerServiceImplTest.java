@@ -30,6 +30,12 @@ import com.moodfm.service.player.impl.catalog.SongCatalogService;
 import com.moodfm.service.player.impl.playurl.PlayUrlService;
 import com.moodfm.service.player.impl.ranking.AiRankingService;
 import com.moodfm.service.player.impl.recall.CandidateRecallService;
+import com.moodfm.service.player.impl.recall.source.LikedRecallSource;
+import com.moodfm.service.player.impl.recall.source.RecommendRecallSource;
+import com.moodfm.service.player.impl.recall.source.GenreSearchRecallSource;
+import com.moodfm.service.player.impl.recall.source.VibeSearchRecallSource;
+import com.moodfm.service.player.impl.recall.source.ExploreSearchRecallSource;
+import com.moodfm.service.player.impl.recall.source.VectorRecallSource;
 import com.moodfm.service.player.impl.queue.RadioQueueStore;
 import com.moodfm.service.player.impl.recall.SongEmbeddingTextBuilder;
 import com.moodfm.service.user.UserService;
@@ -132,13 +138,19 @@ class PlayerServiceImplTest {
         ReflectionTestUtils.setField(songCatalogService, "enrichTimeoutSeconds", 8);
         ReflectionTestUtils.setField(playerService, "songCatalogService", songCatalogService);
 
-        // Wire a real CandidateRecallService from the existing leaf mocks (recall extracted in Task 5).
-        // Reuses the real songCatalogService above for fetchVectorSimilar's VO mapping.
+        // Wire a real CandidateRecallService from the existing leaf mocks (T3-2: recall sources are now beans).
+        // Construct the 6 pluggable RecallSource beans, then build the orchestrator.
+        LikedRecallSource liked = new LikedRecallSource(musicApiClient);
+        RecommendRecallSource recommend = new RecommendRecallSource(musicApiClient);
+        GenreSearchRecallSource genre = new GenreSearchRecallSource(musicApiClient);
+        VibeSearchRecallSource vibe = new VibeSearchRecallSource(musicApiClient);
+        ExploreSearchRecallSource explore = new ExploreSearchRecallSource(musicApiClient);
+        VectorRecallSource vector = new VectorRecallSource(
+                embeddingService, qdrantService, vectorRecallMetrics, songMapper, songCatalogService);
         CandidateRecallService candidateRecallService = new CandidateRecallService(
-                musicApiClient, songMapper, platformSongMappingMapper, feedbackEventMapper,
-                userProfileMapper, userService, globalBlacklistMapper, embeddingService,
-                qdrantService, vectorRecallMetrics, objectMapper, songEmbeddingTextBuilder,
-                songCatalogService);
+                List.of(liked, recommend, genre, vibe, explore, vector),
+                songMapper, platformSongMappingMapper, feedbackEventMapper, userProfileMapper,
+                userService, globalBlacklistMapper, objectMapper, songEmbeddingTextBuilder);
         ReflectionTestUtils.setField(playerService, "candidateRecallService", candidateRecallService);
 
         // Default Redis stubs used across most tests (lenient: unused stubs OK).

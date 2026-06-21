@@ -4,17 +4,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.moodfm.ai.model.MoodParams;
-import com.moodfm.client.music.MusicApiClient;
-import com.moodfm.common.util.MusicResponseParser;
 import com.moodfm.domain.entity.*;
 import com.moodfm.domain.vo.PreferencesVO;
 import com.moodfm.domain.vo.SongVO;
 import com.moodfm.mapper.*;
-import com.moodfm.service.embedding.EmbeddingService;
-import com.moodfm.service.player.impl.catalog.SongCatalogService;
+import com.moodfm.service.player.impl.recall.source.RecallSource;
 import com.moodfm.service.user.UserService;
-import com.moodfm.service.vector.QdrantService;
-import com.moodfm.service.vector.VectorRecallMetrics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -26,39 +21,34 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
- * Candidate recall pipeline: 6-path parallel recall + dedup + source-weighted scoring
- * + emotion match + 3 filters + user-preference merge + vector recall.
+ * Candidate recall pipeline orchestrator: 6-path parallel recall + dedup +
+ * source-weighted scoring + emotion match + 3 filters + user-preference merge.
  * <p>
- * Extracted from {@code PlayerServiceImpl} (T3-1 Task 5).
+ * Each recall path is a pluggable {@link RecallSource} Spring bean, injected as
+ * a {@code List<RecallSource>} sorted by {@code @Order} ascending
+ * (liked→recommend→genre→vibe→explore→vector).
+ * <p>
+ * Timeout fallback (§4 behavior fix): on timeout or partial failure the pipeline
+ * now merges ALL completed sources — the old code dropped vibe-search and
+ * explore-search unconditionally from the timeout catch branch.
+ * <p>
+ * Extracted from {@code PlayerServiceImpl} (T3-1 Task 5); recall paths made
+ * pluggable beans in T3-2 Task 1.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class CandidateRecallService {
 
-    private final MusicApiClient musicApiClient;
+    private final List<RecallSource> recallSources;
     private final SongMapper songMapper;
     private final PlatformSongMappingMapper platformSongMappingMapper;
     private final FeedbackEventMapper feedbackEventMapper;
     private final UserProfileMapper userProfileMapper;
     private final UserService userService;
     private final GlobalBlacklistMapper globalBlacklistMapper;
-    private final EmbeddingService embeddingService;
-    private final QdrantService qdrantService;
-    private final VectorRecallMetrics vectorRecallMetrics;
     private final ObjectMapper objectMapper;
     private final SongEmbeddingTextBuilder songEmbeddingTextBuilder;
-    private final SongCatalogService songCatalogService;
-
-    // ===================== Recall scoring constants (T1-1 + T1-2) =====================
-
-    // Source weights — adjust here to tune recall blend
-    private static final double W_LIKED     = 1.0;
-    private static final double W_VECTOR    = 0.9;
-    private static final double W_RECOMMEND = 0.8;
-    private static final double W_GENRE     = 0.6;
-    private static final double W_VIBE      = 0.6;
-    private static final double W_EXPLORE   = 0.4;
 
     // Emotion-match score constants
     /** Score returned when features are null/unparseable — neutral, neither reward nor penalise */
@@ -94,41 +84,41 @@ public class CandidateRecallService {
         // Build vector recall query text from mood keywords
         String vectorQueryText = songEmbeddingTextBuilder.buildVectorQueryText(mood, genres, vibes);
 
+        RecallContext ctx = new RecallContext(platform, cookie, mood, userId,
+                genreKw, vibeKw, exploreKw, vectorQueryText);
+
         // T1-1: 去重表 + 来源权重表（同一首歌出现在多路时取最大权重）
         LinkedHashMap<String, SongVO> dedup = new LinkedHashMap<>();
         Map<String, Double> sourceWeight = new LinkedHashMap<>();
 
-        // 6 路并行（Virtual Thread） — 原 5 路 + 向量召回
+        // 6 路并行（Virtual Thread） — pluggable RecallSource beans
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            CompletableFuture<List<SongVO>> likedFut     = CompletableFuture.supplyAsync(() -> fetchLiked(platform, cookie), executor);
-            CompletableFuture<List<SongVO>> recommendFut = CompletableFuture.supplyAsync(() -> fetchRecommend(platform, cookie), executor);
-            CompletableFuture<List<SongVO>> genreFut     = CompletableFuture.supplyAsync(() -> fetchSearch(platform, genreKw, 25), executor);
-            CompletableFuture<List<SongVO>> vibeFut      = CompletableFuture.supplyAsync(() -> fetchSearch(platform, vibeKw, 25), executor);
-            CompletableFuture<List<SongVO>> exploreFut   = CompletableFuture.supplyAsync(() -> fetchSearch(platform, exploreKw, 15), executor);
-            CompletableFuture<List<SongVO>> vectorFut    = CompletableFuture.supplyAsync(() -> fetchVectorSimilar(vectorQueryText), executor);
+            Map<RecallSource, CompletableFuture<List<SongVO>>> futures = new LinkedHashMap<>();
+            for (RecallSource s : recallSources) {
+                futures.put(s, CompletableFuture.supplyAsync(() -> s.recall(ctx), executor));
+            }
             try {
-                CompletableFuture.allOf(likedFut, recommendFut, genreFut, vibeFut, exploreFut, vectorFut)
+                CompletableFuture.allOf(futures.values().toArray(new CompletableFuture[0]))
                         .get(12, TimeUnit.SECONDS);
-                addSource(dedup, sourceWeight, safeGet(likedFut,     "liked"),         W_LIKED);
-                addSource(dedup, sourceWeight, safeGet(recommendFut, "recommend"),     W_RECOMMEND);
-                addSource(dedup, sourceWeight, safeGet(genreFut,     "genre-search"),  W_GENRE);
-                addSource(dedup, sourceWeight, safeGet(vibeFut,      "vibe-search"),   W_VIBE);
-                addSource(dedup, sourceWeight, safeGet(exploreFut,   "explore-search"),W_EXPLORE);
-                addSource(dedup, sourceWeight, safeGet(vectorFut,    "vector-search"), W_VECTOR);
             } catch (Exception e) {
-                log.warn("Parallel recall timeout/error, using partial results", e);
-                addSource(dedup, sourceWeight, safeGet(likedFut,     "liked"),         W_LIKED);
-                addSource(dedup, sourceWeight, safeGet(recommendFut, "recommend"),     W_RECOMMEND);
-                addSource(dedup, sourceWeight, safeGet(genreFut,     "genre"),         W_GENRE);
-                addSource(dedup, sourceWeight, safeGet(vectorFut,    "vector-search"), W_VECTOR);
+                log.warn("Parallel recall timeout/error, merging completed sources", e);
+            }
+            // ⚠️ §4 behavior improvement: merge ALL completed sources (was: a fixed 4-source subset
+            // that dropped vibe-search and explore-search on timeout)
+            for (var entry : futures.entrySet()) {
+                RecallSource s = entry.getKey();
+                CompletableFuture<List<SongVO>> f = entry.getValue();
+                if (f.isDone() && !f.isCompletedExceptionally()) {
+                    addSource(dedup, sourceWeight, safeGet(f, s.sourceName()), s.weight());
+                }
             }
         }
 
         // Step B: 批量回填已入库歌曲的 features（候选本身不带特征）
-        backfillFeatures(dedup, platform);
+        backfillFeatures(dedup, ctx.platform());
 
         // T1-1 + T1-2: 打分排序，替换 Collections.shuffle
-        List<SongVO> deduped = scoreAndSort(dedup, sourceWeight, mood);
+        List<SongVO> deduped = scoreAndSort(dedup, sourceWeight, ctx.mood());
 
         // Feature 4: 反馈评分过滤
         if (userId != null) {
@@ -526,51 +516,5 @@ public class CandidateRecallService {
     private List<SongVO> safeGet(CompletableFuture<List<SongVO>> f, String label) {
         try { return f.isDone() ? f.get() : List.of(); }
         catch (Exception e) { log.warn("Recall path {} failed", label, e); return List.of(); }
-    }
-
-    private List<SongVO> fetchLiked(String platform, String cookie) {
-        try { return MusicResponseParser.parseSongs(musicApiClient.getUserLikedSongs(platform, cookie), platform); }
-        catch (Exception e) { log.warn("fetchLiked failed", e); return List.of(); }
-    }
-
-    private List<SongVO> fetchRecommend(String platform, String cookie) {
-        try { return MusicResponseParser.parseSongs(musicApiClient.getRecommendSongs(platform, cookie), platform); }
-        catch (Exception e) { log.warn("fetchRecommend failed", e); return List.of(); }
-    }
-
-    private List<SongVO> fetchSearch(String platform, String keywords, int limit) {
-        try { return MusicResponseParser.parseSongs(musicApiClient.searchSongs(platform, keywords, limit, null), platform); }
-        catch (Exception e) { log.warn("fetchSearch failed: {}", keywords, e); return List.of(); }
-    }
-
-    // ===================== Vector Recall (6th path) =====================
-
-    /**
-     * 6th recall path: vector similarity search via Qdrant.
-     * Gracefully returns empty list if Qdrant is unavailable.
-     */
-    private List<SongVO> fetchVectorSimilar(String queryText) {
-        try {
-            float[] embedding = embeddingService.embed(queryText);
-            List<Long> songIds = qdrantService.searchSimilar(embedding, 20);
-            if (songIds.isEmpty()) return List.of();
-
-            // Batch query songs from DB
-            List<Song> songs = songMapper.selectBatchIds(songIds);
-            if (songs.isEmpty()) return List.of();
-
-            // Preserve similarity order
-            Map<Long, Song> songMap = new LinkedHashMap<>();
-            for (Long id : songIds) {
-                songs.stream().filter(s -> s.getId().equals(id)).findFirst().ifPresent(s -> songMap.put(id, s));
-            }
-
-            // Batch convert with single mapping query (no N+1)
-            return songCatalogService.songsToVOs(new ArrayList<>(songMap.values()));
-        } catch (Exception e) {
-            log.warn("Vector recall failed: {}", e.getMessage());
-            vectorRecallMetrics.recallFailure();
-            return List.of();
-        }
     }
 }
