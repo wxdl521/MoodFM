@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.moodfm.ai.model.MoodParams;
-import com.moodfm.common.constant.RedisKeys;
 import com.moodfm.common.exception.BizException;
 import com.moodfm.common.result.ResultCode;
 import com.moodfm.common.util.AesUtil;
@@ -20,16 +19,13 @@ import com.moodfm.service.platform.PlatformBindingService;
 import com.moodfm.service.player.PlayerService;
 import com.moodfm.service.player.impl.catalog.SongCatalogService;
 import com.moodfm.service.player.impl.playurl.PlayUrlService;
+import com.moodfm.service.player.impl.queue.RadioQueueStore;
 import com.moodfm.service.player.impl.recall.CandidateRecallService;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.RedisOperations;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -48,11 +44,11 @@ public class PlayerServiceImpl implements PlayerService {
     private final PlatformSongMappingMapper platformSongMappingMapper;
     private final AesUtil aesUtil;
     private final ObjectMapper objectMapper;
-    private final StringRedisTemplate redisTemplate;
     private final AiRankingService aiRankingService;
     private final CandidateRecallService candidateRecallService;
     private final PlayUrlService playUrlService;
     private final SongCatalogService songCatalogService;
+    private final RadioQueueStore radioQueueStore;
 
     /** Virtual Thread executor for background tasks (Feature 2: queue auto-refill) */
     private final java.util.concurrent.ExecutorService bgExecutor = Executors.newVirtualThreadPerTaskExecutor();
@@ -98,14 +94,13 @@ public class PlayerServiceImpl implements PlayerService {
         // 2.5 存储会话时长 TTL
         // durationMinutes == null  → "无限"，封顶 24h TTL（保留 marker，让 isSessionExpired 在 24h 内返回 false）
         // durationMinutes != null  → 设置对应秒数的 TTL
-        String ttlKey = RedisKeys.format(RedisKeys.SESSION_TTL, session.getId());
         Integer durationMinutes = request.getDurationMinutes();
         if (durationMinutes == null) {
             // 无限时长：marker 封顶 24 小时，避免 Redis 中永不过期的 key 无限堆积。
             // 行为变化：连续播放超过 24h 的会话会被判定过期，需重新开台（可接受）。
-            redisTemplate.opsForValue().set(ttlKey, "infinite", Duration.ofHours(24));
+            radioQueueStore.markSessionTtlInfinite(session.getId());
         } else {
-            redisTemplate.opsForValue().set(ttlKey, String.valueOf(durationMinutes * 60), Duration.ofSeconds(durationMinutes * 60L));
+            radioQueueStore.markSessionTtlSeconds(session.getId(), durationMinutes * 60);
         }
 
         // 3. 获取默认绑定平台 + cookie
@@ -126,34 +121,10 @@ public class PlayerServiceImpl implements PlayerService {
         songCatalogService.persistSongs(ranked, platform);
 
         // 7. 存入 Redis 队列（原子替换，避免 delete + rightPushAll 之间的竞态窗口）
-        String queueKey = RedisKeys.format(RedisKeys.USER_QUEUE, userId);
-        try {
-            if (!ranked.isEmpty()) {
-                List<String> serialized = new ArrayList<>();
-                for (SongVO s : ranked) {
-                    serialized.add(objectMapper.writeValueAsString(s));
-                }
-                // Use Redis transaction to atomically replace the queue
-                List<Object> txResults = redisTemplate.execute(new SessionCallback<>() {
-                    @Override
-                    @SuppressWarnings("unchecked")
-                    public List<Object> execute(RedisOperations operations) {
-                        operations.multi();
-                        operations.delete(queueKey);
-                        operations.opsForList().rightPushAll(queueKey, serialized);
-                        return operations.exec();
-                    }
-                });
-                redisTemplate.expire(queueKey, Duration.ofHours(2));
-            } else {
-                redisTemplate.delete(queueKey);
-            }
-        } catch (Exception e) {
-            log.warn("Failed to cache queue", e);
-        }
+        radioQueueStore.replaceQueue(userId, ranked);
 
         // 8. 重置重排计数器
-        redisTemplate.delete(RedisKeys.format(RedisKeys.QUEUE_RERANK, userId));
+        radioQueueStore.resetRerankCounter(userId);
 
         String moodSummary = aiRankingService.buildMoodSummary(moodParams);
 
@@ -206,8 +177,7 @@ public class PlayerServiceImpl implements PlayerService {
         sessionMapper.insert(session);
 
         // 3.5 存储会话时长 TTL（默认 30 分钟）
-        String ttlKey = RedisKeys.format(RedisKeys.SESSION_TTL, session.getId());
-        redisTemplate.opsForValue().set(ttlKey, String.valueOf(30 * 60), Duration.ofSeconds(30 * 60L));
+        radioQueueStore.markSessionTtlSeconds(session.getId(), 30 * 60);
 
         // 4. 获取默认绑定平台 + cookie
         PlatformBinding binding = platformBindingService.getDefaultBinding(userId);
@@ -242,33 +212,9 @@ public class PlayerServiceImpl implements PlayerService {
         // 8. 持久化 + 存入 Redis 队列
         songCatalogService.persistSongs(ranked, platform);
 
-        String queueKey = RedisKeys.format(RedisKeys.USER_QUEUE, userId);
-        try {
-            if (!ranked.isEmpty()) {
-                List<String> serialized = new ArrayList<>();
-                for (SongVO s : ranked) {
-                    serialized.add(objectMapper.writeValueAsString(s));
-                }
-                // Use Redis transaction to atomically replace the queue
-                redisTemplate.execute(new SessionCallback<>() {
-                    @Override
-                    @SuppressWarnings("unchecked")
-                    public List<Object> execute(RedisOperations operations) {
-                        operations.multi();
-                        operations.delete(queueKey);
-                        operations.opsForList().rightPushAll(queueKey, serialized);
-                        return operations.exec();
-                    }
-                });
-                redisTemplate.expire(queueKey, Duration.ofHours(2));
-            } else {
-                redisTemplate.delete(queueKey);
-            }
-        } catch (Exception e) {
-            log.warn("Failed to cache queue", e);
-        }
+        radioQueueStore.replaceQueue(userId, ranked);
 
-        redisTemplate.delete(RedisKeys.format(RedisKeys.QUEUE_RERANK, userId));
+        radioQueueStore.resetRerankCounter(userId);
 
         return RadioQueueVO.builder()
                 .sessionId(session.getId())
@@ -283,19 +229,8 @@ public class PlayerServiceImpl implements PlayerService {
 
     @Override
     public List<SongVO> getNextBatch(Long userId, Long sessionId) {
-        String queueKey = RedisKeys.format(RedisKeys.USER_QUEUE, userId);
-
         // 原子弹出：每首歌逐个消费，避免并发问题
-        List<SongVO> result = new ArrayList<>();
-        for (int i = 0; i < 5; i++) {
-            String raw = redisTemplate.opsForList().leftPop(queueKey);
-            if (raw == null) break;
-            try {
-                result.add(objectMapper.readValue(raw, SongVO.class));
-            } catch (Exception e) {
-                log.warn("Failed to deserialize queued song", e);
-            }
-        }
+        List<SongVO> result = radioQueueStore.popBatch(userId, 5);
 
         if (result.isEmpty()) return result;
 
@@ -303,7 +238,7 @@ public class PlayerServiceImpl implements PlayerService {
         reRankIfNeeded(userId, sessionId);
 
         // Feature 2: 队列长度 < 阈值 → 后台补充
-        Long remaining = redisTemplate.opsForList().size(queueKey);
+        Long remaining = radioQueueStore.size(userId);
         if (remaining != null && remaining < REFILL_THRESHOLD) {
             CompletableFuture.runAsync(() -> refillQueue(userId), bgExecutor);
         }
@@ -324,13 +259,9 @@ public class PlayerServiceImpl implements PlayerService {
     @Override
     public void reRankIfNeeded(Long userId, Long sessionId) {
         if (userId == null) return;
-        String counterKey = RedisKeys.format(RedisKeys.QUEUE_RERANK, userId);
-        Long count = redisTemplate.opsForValue().increment(counterKey);
-        if (count == null) count = 1L;
-        redisTemplate.expire(counterKey, Duration.ofHours(2));
-
-        if (count != null && count >= RERANK_EVERY) {
-            redisTemplate.delete(counterKey);
+        long count = radioQueueStore.incrementAndExpireRerankCounter(userId);
+        if (count >= RERANK_EVERY) {
+            radioQueueStore.resetRerankCounter(userId);
             // 异步重排，不阻塞当前请求
             CompletableFuture.runAsync(() -> doReRank(userId, sessionId), bgExecutor);
             log.info("Triggered re-rank for user {} after {} songs", userId, count);
@@ -354,8 +285,7 @@ public class PlayerServiceImpl implements PlayerService {
             List<SongVO> candidates = candidateRecallService.recallSongs(platform, cookie, mood, userId);
 
             // 去掉已在队列中的歌曲
-            String queueKey = RedisKeys.format(RedisKeys.USER_QUEUE, userId);
-            Set<String> existingIds = peekQueueIds(userId);
+            Set<String> existingIds = radioQueueStore.peekIds(userId);
             List<SongVO> fresh = candidates.stream()
                     .filter(s -> s.getPlatformSongId() != null && !existingIds.contains(s.getPlatformSongId()))
                     .collect(Collectors.toList());
@@ -376,13 +306,7 @@ public class PlayerServiceImpl implements PlayerService {
             songCatalogService.persistSongs(nextBatch, platform);
 
             // 插入到队列最前面（优先播放重排结果）
-            // Reverse so the best-ranked song ends up at the list head after leftPushAll
-            List<String> serialized = new ArrayList<>();
-            for (SongVO s : nextBatch) {
-                serialized.add(objectMapper.writeValueAsString(s));
-            }
-            Collections.reverse(serialized);
-            redisTemplate.opsForList().leftPushAll(queueKey, serialized);
+            radioQueueStore.prependBatch(userId, nextBatch);
 
             log.info("Re-ranked {} songs prepended to queue for user {}", nextBatch.size(), userId);
         } catch (Exception e) {
@@ -394,8 +318,7 @@ public class PlayerServiceImpl implements PlayerService {
 
     private void refillQueue(Long userId) {
         try {
-            String queueKey = RedisKeys.format(RedisKeys.USER_QUEUE, userId);
-            Long currentSize = redisTemplate.opsForList().size(queueKey);
+            Long currentSize = radioQueueStore.size(userId);
             if (currentSize != null && currentSize >= REFILL_THRESHOLD) return; // 并发安全：二次检查
 
             PlatformBinding binding = platformBindingService.getDefaultBinding(userId);
@@ -406,7 +329,7 @@ public class PlayerServiceImpl implements PlayerService {
             List<SongVO> candidates = candidateRecallService.recallSongs(platform, cookie, mood, userId);
 
             // 去掉已在队列中的
-            Set<String> existingIds = peekQueueIds(userId);
+            Set<String> existingIds = radioQueueStore.peekIds(userId);
             List<SongVO> fresh = candidates.stream()
                     .filter(s -> s.getPlatformSongId() != null && !existingIds.contains(s.getPlatformSongId()))
                     .limit(20)
@@ -419,12 +342,7 @@ public class PlayerServiceImpl implements PlayerService {
 
             songCatalogService.persistSongs(fresh, platform);
 
-            List<String> serialized = new ArrayList<>();
-            for (SongVO s : fresh) {
-                serialized.add(objectMapper.writeValueAsString(s));
-            }
-            redisTemplate.opsForList().rightPushAll(queueKey, serialized);
-            redisTemplate.expire(queueKey, Duration.ofHours(2));
+            radioQueueStore.appendBatch(userId, fresh);
 
             log.info("Refilled queue with {} songs for user {}", fresh.size(), userId);
         } catch (Exception e) {
@@ -464,19 +382,6 @@ public class PlayerServiceImpl implements PlayerService {
         return MoodParams.defaultParams();
     }
 
-    private Set<String> peekQueueIds(Long userId) {
-        String queueKey = RedisKeys.format(RedisKeys.USER_QUEUE, userId);
-        List<String> rawList = redisTemplate.opsForList().range(queueKey, 0, -1);
-        if (rawList == null) return Set.of();
-        return rawList.stream().map(raw -> {
-            try {
-                return objectMapper.readValue(raw, SongVO.class).getPlatformSongId();
-            } catch (Exception e) {
-                return null;
-            }
-        }).filter(Objects::nonNull).collect(Collectors.toSet());
-    }
-
     private Long toLong(Object val) {
         if (val == null) return null;
         if (val instanceof Long l) return l;
@@ -489,17 +394,15 @@ public class PlayerServiceImpl implements PlayerService {
     @Override
     public void setSessionDuration(Long sessionId, int minutes) {
         if (sessionId == null || minutes < 1) return;
-        String ttlKey = RedisKeys.format(RedisKeys.SESSION_TTL, sessionId);
         int seconds = minutes * 60;
-        redisTemplate.opsForValue().set(ttlKey, String.valueOf(seconds), Duration.ofSeconds(seconds));
+        radioQueueStore.markSessionTtlSeconds(sessionId, seconds);
         log.info("Updated session {} duration to {} minutes", sessionId, minutes);
     }
 
     @Override
     public boolean isSessionExpired(Long sessionId) {
         if (sessionId == null) return false;
-        String ttlKey = RedisKeys.format(RedisKeys.SESSION_TTL, sessionId);
         // key 不存在 = 已过期或未设置
-        return !Boolean.TRUE.equals(redisTemplate.hasKey(ttlKey));
+        return radioQueueStore.isExpired(sessionId);
     }
 }

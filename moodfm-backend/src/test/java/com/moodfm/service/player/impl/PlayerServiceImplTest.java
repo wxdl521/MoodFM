@@ -30,6 +30,7 @@ import com.moodfm.service.player.impl.catalog.SongCatalogService;
 import com.moodfm.service.player.impl.playurl.PlayUrlService;
 import com.moodfm.service.player.impl.ranking.AiRankingService;
 import com.moodfm.service.player.impl.recall.CandidateRecallService;
+import com.moodfm.service.player.impl.queue.RadioQueueStore;
 import com.moodfm.service.player.impl.recall.SongEmbeddingTextBuilder;
 import com.moodfm.service.user.UserService;
 import com.moodfm.service.vector.QdrantService;
@@ -159,6 +160,12 @@ class PlayerServiceImplTest {
         PlayUrlService playUrlService = new PlayUrlService(musicApiClient, platformBindingService, aesUtil,
                 platformSongMappingMapper, songMapper);
         ReflectionTestUtils.setField(playerService, "playUrlService", playUrlService);
+
+        // Wire a real RadioQueueStore from the mock redisTemplate + real objectMapper.
+        // All verify(valueOps/listOps/redisTemplate...) assertions remain valid unchanged
+        // because the real store funnels every call through the same mock redisTemplate.
+        RadioQueueStore radioQueueStore = new RadioQueueStore(redisTemplate, objectMapper);
+        ReflectionTestUtils.setField(playerService, "radioQueueStore", radioQueueStore);
     }
 
     // ========================================================================
