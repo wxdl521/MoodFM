@@ -15,7 +15,7 @@ MoodFM 是一个基于“当下心情”生成私人音乐电台的全栈项目�
 
 | 模块 | 技术 |
 |---|---|
-| 后端 | Java 21, Spring Boot 3.3.6, Spring Security, JWT, Spring AI, MyBatis-Plus, Flyway, Caffeine, Qdrant 客户端 |
+| 后端 | Java 21, Spring Boot 3.3.6, Spring Security, JWT, Spring AI, MyBatis-Plus, Flyway, Caffeine, Micrometer/Actuator, Qdrant 客户端 |
 | 前端 | Vue 3, Vite, Vue Router, Pinia, Axios, Howler, ECharts, html2canvas, Vitest |
 | 桌面壳 | Electron 33, electron-builder, TypeScript, electron-store |
 | 音乐适配器 | Node.js 18+, Express, NeteaseCloudMusicApi, Axios |
@@ -57,13 +57,26 @@ MoodFM 是一个基于“当下心情”生成私人音乐电台的全栈项目�
   - `scene`：场景预设。
   - `valence` + `energy`：心情坐标。
 - Spring AI 根据 `src/main/resources/prompts/mood-analysis.txt` 生成结构化心情参数。
-- 基于心情参数从多个来源召回候选歌曲。
-- 使用 `song-ranking.txt` 对候选歌曲重排并生成推荐理由。
+- 基于心情参数从多路来源并行召回候选歌曲（liked / recommend / 流派搜索 / 氛围搜索 / explore 搜索 / 向量召回），按**来源权重 + 歌曲情绪匹配分**排序后截断，不再无差别随机打乱（详见「召回、重排与歌曲特征」）。
+- 使用 `song-ranking.txt` 对候选歌曲重排并生成推荐理由；候选会带上真实歌曲特征（valence/energy/流派/氛围词），让重排有据、推荐理由不再空泛。
 - 队列写入 Redis，支持下一批歌曲：`GET /api/radio/next`。
 - 获取播放地址：`GET /api/radio/url`。
 - 基于某首歌启动同款电台：`POST /api/radio/start-from-song`。
 
-LLM 调用失败时，后端会使用默认心情参数兜底，保证主链路尽量可用。
+LLM 调用统一经 `LlmClient` 封装（超时 + 单次重试），失败时按调用点降级（心情分析→默认参数、重排→截断兜底、特征富化→保底特征、周报→默认文案），且每次降级都有 Micrometer 计数与结构化日志，可观测（详见「LLM 调用与可观测降级」）。
+
+### 召回、重排与歌曲特征
+
+围绕「让『基于情绪』真正成立」强化了召回与重排链路：
+
+- **歌曲特征富化**：新歌入库时由 LLM（经 `prompts/song-feature.txt`）生成稳定的结构化特征并写入 `songs.features`（JSON：`valence`、`energy`、`genre`、`language`、`tempo_bucket`、`mood_tags`、`source`、`version`）。结果按 `(title, artist)` 永久缓存（cache 名 `songFeatures`），一首歌只算一次；一次调台对新歌并发富化并设总超时（默认 8s，`song.feature.enrich.timeout-seconds` 可配），超时或失败的歌以保底特征入库，绝不阻断主链路。
+- **来源加权召回**：六路召回结果按来源权重打分（liked=1.0、vector=0.9、recommend=0.8、genre=0.6、vibe=0.6、explore=0.4，同候选取最高来源分），叠加「歌曲特征与当前心情参数的情绪匹配分」（valence/energy 欧氏距离 + 流派/语言命中加分），命中 `avoidKeywords` 的候选降权沉底，最后按总分截断——保留高信号源、可解释，不再 `Collections.shuffle`。
+- **特征驱动重排**：重排 prompt 为每个候选附带 `valence|energy|genre|mood_tags`（缺失填「未知」），让 LLM 基于真实特征排序并编排能量曲线，而非仅看歌名臆测。
+- **向量召回（默认关闭）**：索引侧改为 embed 歌曲情绪文本（由 features 拼成）而非歌名，与查询侧心情文本同构；collection 维度可配置（`embedding.dim`，默认 2048）并在启用时校验实际输出维度，不一致即 fail-fast；召回失败有 warn 日志 + 计数，不再静默吞掉。
+
+### LLM 调用与可观测降级
+
+四处 LLM 调用——心情分析、歌曲重排、歌曲特征富化、周报文案——统一收口到 `service/ai/LlmClient`（统一超时 + 单次重试，失败抛 `LlmException`）。每次降级都会递增 Micrometer 计数 `moodfm.llm.fallback{stage=mood_analysis|song_ranking|song_feature|weekly_report}` 并打结构化日志，可经 Actuator 暴露给 Prometheus，避免核心功能在无人察觉时悄悄退化。
 
 ### 播放器与反馈
 
@@ -71,6 +84,7 @@ LLM 调用失败时，后端会使用默认心情参数兜底，保证主链路�
 - 通过 Howler 加载真实音频 URL。
 - 播放反馈（REST）：`POST /api/radio/feedback`（单条）、`POST /api/radio/feedback/batch`（批量）。
 - 反馈事件会尝试写入 `feedback_events`，部分 completed/skip 事件会写入 `play_records`；命中条件时后端会对当前会话队列做动态重排。
+- 写入 `play_records` 时 platform 经解析链确定（上报 `dto.platform` → `platform_song_mapping` 中该歌的唯一映射 → 用户默认绑定平台 → 兜底 `unknown` + warn），不再硬编码为 `netease`，避免污染洞察的平台维度统计。
 - 获取历史会话（断点续播用）：`GET /api/radio/sessions`。
 
 ### 数据洞察与日历
@@ -161,9 +175,8 @@ QQ 音乐的 liked/recommend/song-url 当前多为占位或不完整实现。
   - `POST /api/platforms/{platform}/bind/phone`
 - QQ 音乐适配器能力不完整。
 - Spotify、YouTube Music、Bilibili 等平台未接入。
-- Qdrant 向量检索已接入代码（`mode=mood` 搜索、相似召回），但默认 compose 没有 qdrant 服务、`QDRANT_ENABLED=false`，需自行部署 Qdrant 并灌入歌曲向量后才真正可用。
-- AI 推荐解释目前主要基于候选歌名/艺人和心情参数，缺少完整歌曲特征库支撑。
-- 写入 `play_records` 时需注意 `play_records.platform` 为 NOT NULL，部分写入路径需确保已设置 platform。
+- Qdrant 向量检索已接入代码（`mode=mood` 搜索、相似召回，索引语义已对齐为歌曲情绪文本、维度可配置并校验），但默认 compose 没有 qdrant 服务、`QDRANT_ENABLED=false`，需自行部署 Qdrant 并灌入歌曲向量后才真正可用。
+- 歌曲特征富化依赖 LLM 在入库时生成，存量历史歌曲（富化层上线前入库）`features` 仍可能为空，需重跑或随再次召回逐步回填。
 - 年度报告、分享电台、移动端 App、语音输入等仍属于未来规划。
 
 ## 项目结构
@@ -182,10 +195,13 @@ MoodFM/
 │     ├─ mapper/         # MyBatis-Plus Mapper 接口
 │     ├─ scheduler/      # 周报定时任务
 │     ├─ security/       # JwtAuthFilter / UserDetailsService
-│     └─ service/        # 业务服务（PlayerService / MoodAnalysisService / SearchService 等）
+│     └─ service/        # 业务服务：player/ AI 电台编排（PlayerServiceImpl 为薄编排层，
+│                        #   impl/ 下按职责拆分协作者：recall 召回打分过滤、ranking AI 重排、
+│                        #   catalog 入库富化向量索引、playurl 播放地址跨平台回退、queue Redis 队列/TTL），
+│                        #   ai/ LlmClient+降级计数+心情分析、enrich/ 歌曲特征富化、report/ 周报、search/ 双模搜索 等
 │  └─ src/main/resources/
 │     ├─ db/migration/   # Flyway 迁移脚本（当前到 V5）
-│     └─ prompts/        # LLM 提示词模板
+│     └─ prompts/        # LLM 提示词模板（mood-analysis / song-ranking / song-feature / weekly-report）
 ├─ moodfm-frontend/         # Vue/Vite 前端
 │  └─ src/
 │     ├─ api/             # Axios 封装 + 各模块 API 声明
