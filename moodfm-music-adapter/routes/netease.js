@@ -1,5 +1,6 @@
 const express = require('express')
 const router = express.Router()
+const crypto = require('crypto')
 
 let api
 function getApi() {
@@ -10,6 +11,16 @@ function getApi() {
 function getCookie(req) {
   return req.headers['x-cookie'] || ''
 }
+
+// In-memory phone sessions: ticket -> { phone, createdAt }
+const phoneSessions = new Map()
+
+setInterval(() => {
+  const now = Date.now()
+  for (const [k, v] of phoneSessions) {
+    if (now - v.createdAt > 10 * 60 * 1000) phoneSessions.delete(k)
+  }
+}, 60 * 1000)
 
 // --------- 二维码登录 ---------
 
@@ -55,6 +66,64 @@ router.get('/qr/check', async (req, res) => {
       // cookie not recoverable from error — backend will ask user to switch to Cookie method
       return res.json({ code: 803, cookie: '', message: 'login success (cookie unavailable)' })
     }
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// --------- 手机号登录 ---------
+
+router.post('/phone/code', async (req, res) => {
+  try {
+    const { phone } = req.body
+    if (!phone) return res.status(400).json({ error: 'phone is required' })
+
+    const result = await getApi().captcha_sent({ phone, ctcode: 86, timestamp: Date.now() })
+    if (result.body.code !== 200) {
+      return res.status(400).json({ error: result.body.message || '短信发送失败' })
+    }
+
+    const ticket = crypto.randomBytes(16).toString('hex')
+    phoneSessions.set(ticket, { phone, createdAt: Date.now() })
+    res.json({ code: 200, data: { ticket } })
+  } catch (e) {
+    console.error('Netease phone/code error:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+router.post('/phone/verify', async (req, res) => {
+  try {
+    const { phone, code, ticket } = req.body
+    if (!phone || !code || !ticket) {
+      return res.status(400).json({ error: 'phone, code and ticket are required' })
+    }
+
+    const session = phoneSessions.get(ticket)
+    if (!session || session.phone !== phone) {
+      return res.status(400).json({ error: '会话已过期，请重新获取验证码' })
+    }
+
+    const result = await getApi().login_cellphone({
+      phone,
+      captcha: code,
+      countrycode: 86,
+      timestamp: Date.now(),
+    })
+
+    if (result.body.code !== 200) {
+      return res.status(400).json({ error: result.body.message || '验证码错误或已过期' })
+    }
+
+    const cookie = result.body.cookie || (Array.isArray(result.cookie) ? result.cookie.join(';') : '')
+    const username = result.body.profile?.nickname
+      || result.body.account?.userName
+      || result.body.bindings?.[0]?.user?.nickname
+      || ''
+
+    phoneSessions.delete(ticket)
+    res.json({ code: 803, cookie, account: username })
+  } catch (e) {
+    console.error('Netease phone/verify error:', e.message)
     res.status(500).json({ error: e.message })
   }
 })
