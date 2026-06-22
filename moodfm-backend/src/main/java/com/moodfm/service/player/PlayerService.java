@@ -12,6 +12,7 @@ public interface PlayerService {
 
     RadioQueueVO startRadio(Long userId, MoodInputRequest request);
     RadioQueueVO startRadioFromSong(Long userId, Long songId);
+    RadioQueueVO startRadioFromPlaylist(Long userId, String playlistId, Integer durationMinutes);
     List<SongVO> getNextBatch(Long userId, Long sessionId);
     String getSongUrl(Long userId, String platform, String songId);
 

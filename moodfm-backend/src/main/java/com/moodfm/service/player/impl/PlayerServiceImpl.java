@@ -16,7 +16,9 @@ import com.moodfm.mapper.*;
 import com.moodfm.service.ai.MoodAnalysisService;
 import com.moodfm.service.player.impl.ranking.AiRankingService;
 import com.moodfm.service.platform.PlatformBindingService;
+import com.moodfm.service.playlist.PlaylistService;
 import com.moodfm.service.player.PlayerService;
+import com.moodfm.domain.vo.PlaylistVO;
 import com.moodfm.service.player.impl.catalog.SongCatalogService;
 import com.moodfm.service.player.impl.playurl.PlayUrlService;
 import com.moodfm.service.player.impl.queue.RadioQueueStore;
@@ -49,6 +51,7 @@ public class PlayerServiceImpl implements PlayerService {
     private final PlayUrlService playUrlService;
     private final SongCatalogService songCatalogService;
     private final RadioQueueStore radioQueueStore;
+    private final PlaylistService playlistService;
 
     /** Virtual Thread executor for background tasks (Feature 2: queue auto-refill) */
     private final java.util.concurrent.ExecutorService bgExecutor = Executors.newVirtualThreadPerTaskExecutor();
@@ -223,6 +226,137 @@ public class PlayerServiceImpl implements PlayerService {
                 .songs(ranked)
                 .totalCount(ranked.size())
                 .build();
+    }
+
+    // ===================== startRadioFromPlaylist =====================
+
+    @Override
+    public RadioQueueVO startRadioFromPlaylist(Long userId, String playlistId, Integer durationMinutes) {
+        PlaylistVO playlist = playlistService.getPlaylist(userId, playlistId);
+        List<SongVO> playlistTracks = playlist.getTracks();
+        if (playlistTracks == null || playlistTracks.isEmpty()) {
+            throw new BizException(ResultCode.RECALL_FAILED, "歌单为空或无法加载曲目");
+        }
+
+        String platform = playlist.getPlatform();
+        if (platform == null || platform.isBlank()) {
+            String[] parts = playlistId.split(":", 2);
+            platform = parts.length == 2 ? parts[0] : null;
+        }
+        if (platform == null || platform.isBlank()) {
+            throw new BizException(ResultCode.RECALL_FAILED, "无法识别歌单所属平台");
+        }
+
+        MoodParams moodParams = buildMoodParamsFromPlaylist(playlist, playlistTracks);
+
+        MoodSession session = new MoodSession();
+        session.setUserId(userId);
+        session.setRawInput("基于歌单: " + (playlist.getName() != null ? playlist.getName() : playlistId));
+        session.setScene("playlist");
+        try { session.setMoodParams(objectMapper.writeValueAsString(moodParams)); } catch (Exception ignored) {}
+        session.setDurationMinutes(durationMinutes != null ? durationMinutes : 30);
+        sessionMapper.insert(session);
+
+        if (durationMinutes == null) {
+            radioQueueStore.markSessionTtlInfinite(session.getId());
+        } else {
+            radioQueueStore.markSessionTtlSeconds(session.getId(), durationMinutes * 60);
+        }
+
+        PlatformBinding binding = platformBindingService.getValidBinding(userId, platform);
+        String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
+
+        List<SongVO> recalled = candidateRecallService.recallSongs(platform, cookie, moodParams, userId);
+        List<SongVO> merged = mergePlaylistWithRecalled(playlistTracks, recalled);
+
+        List<SongVO> ranked = aiRankingService.rank(merged, moodParams);
+        playUrlService.enrichWithPlayUrls(ranked, platform, cookie);
+        songCatalogService.persistSongs(ranked, platform);
+
+        radioQueueStore.replaceQueue(userId, ranked);
+        radioQueueStore.resetRerankCounter(userId);
+
+        String playlistName = playlist.getName() != null ? playlist.getName() : "歌单";
+        return RadioQueueVO.builder()
+                .sessionId(session.getId())
+                .scene("playlist")
+                .moodSummary("基于歌单「" + playlistName + "」生成")
+                .songs(ranked)
+                .totalCount(ranked.size())
+                .build();
+    }
+
+    private MoodParams buildMoodParamsFromPlaylist(PlaylistVO playlist, List<SongVO> tracks) {
+        MoodParams moodParams = MoodParams.defaultParams();
+        moodParams.setSceneInferred("playlist");
+
+        LinkedHashSet<String> artists = new LinkedHashSet<>();
+        LinkedHashSet<String> genres = new LinkedHashSet<>();
+        double valenceSum = 0;
+        double energySum = 0;
+        int featureCount = 0;
+
+        int limit = Math.min(tracks.size(), 15);
+        for (int i = 0; i < limit; i++) {
+            SongVO track = tracks.get(i);
+            if (track.getArtist() != null && !track.getArtist().isBlank()) {
+                artists.add(track.getArtist().trim());
+            }
+            if (track.getId() != null) {
+                Song dbSong = songMapper.selectById(track.getId());
+                if (dbSong != null && dbSong.getFeatures() != null && !dbSong.getFeatures().isBlank()) {
+                    try {
+                        JsonNode features = objectMapper.readTree(dbSong.getFeatures());
+                        String genre = features.path("genre").asText(null);
+                        if (genre != null && !genre.isBlank()) genres.add(genre);
+                        if (features.has("valence")) {
+                            valenceSum += features.path("valence").asDouble(0.5);
+                            energySum += features.path("energy").asDouble(0.5);
+                            featureCount++;
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
+
+        if (genres.isEmpty() && playlist.getName() != null && !playlist.getName().isBlank()) {
+            genres.add(playlist.getName().trim());
+        }
+        if (genres.isEmpty()) genres.add("歌单");
+
+        moodParams.setVibeKeywords(artists.stream().limit(6).collect(Collectors.toList()));
+        moodParams.setPreferredGenres(genres.stream().limit(5).collect(Collectors.toList()));
+
+        if (featureCount > 0 && moodParams.getMood() != null) {
+            moodParams.getMood().setValence(valenceSum / featureCount);
+            moodParams.getMood().setEnergy(energySum / featureCount);
+        }
+
+        return moodParams;
+    }
+
+    private List<SongVO> mergePlaylistWithRecalled(List<SongVO> playlistTracks, List<SongVO> recalled) {
+        LinkedHashMap<String, SongVO> byKey = new LinkedHashMap<>();
+        for (SongVO track : playlistTracks) {
+            String key = songDedupeKey(track);
+            if (key != null) byKey.putIfAbsent(key, track);
+        }
+        for (SongVO song : recalled) {
+            String key = songDedupeKey(song);
+            if (key != null) byKey.putIfAbsent(key, song);
+        }
+        return new ArrayList<>(byKey.values());
+    }
+
+    private String songDedupeKey(SongVO song) {
+        if (song.getPlatformSongId() != null && !song.getPlatformSongId().isBlank()) {
+            String p = song.getPlatform() != null ? song.getPlatform() : "";
+            return p + ":" + song.getPlatformSongId();
+        }
+        if (song.getTitle() != null && song.getArtist() != null) {
+            return song.getTitle() + "|" + song.getArtist();
+        }
+        return null;
     }
 
     // ===================== getNextBatch (Feature 2: 消费 + 自动补充) =====================

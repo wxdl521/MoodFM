@@ -12,8 +12,10 @@ import com.moodfm.domain.entity.MoodSession;
 import com.moodfm.domain.entity.PlatformBinding;
 import com.moodfm.domain.entity.PlatformSongMapping;
 import com.moodfm.domain.entity.Song;
+import com.moodfm.domain.vo.PlaylistVO;
 import com.moodfm.domain.vo.RadioQueueVO;
 import com.moodfm.domain.vo.SongVO;
+import com.moodfm.service.playlist.PlaylistService;
 import com.moodfm.mapper.FeedbackEventMapper;
 import com.moodfm.mapper.GlobalBlacklistMapper;
 import com.moodfm.mapper.MoodSessionMapper;
@@ -114,6 +116,7 @@ class PlayerServiceImplTest {
     @Mock private GlobalBlacklistMapper globalBlacklistMapper;
     @Mock private SongFeatureService songFeatureService;
     @Mock private SongEmbeddingTextBuilder songEmbeddingTextBuilder;
+    @Mock private PlaylistService playlistService;
 
     @Mock private ValueOperations<String, String> valueOps;
     @Mock private ListOperations<String, String> listOps;
@@ -766,5 +769,61 @@ class PlayerServiceImplTest {
         assertNotNull(features, "features must not be null");
         assertTrue(features.contains("\"source\":\"fallback\""),
                 "timed-out song should have fallback features; got: " + features);
+    }
+
+    // ========================================================================
+    // startRadioFromPlaylist
+    // ========================================================================
+
+    @Test
+    void startRadioFromPlaylist_mergesPlaylistTracksAndCreatesSession() throws Exception {
+        SongVO seed = SongVO.builder()
+                .title("Night Walk")
+                .artist("Artist A")
+                .platform("netease")
+                .platformSongId("1001")
+                .durationSeconds(200)
+                .build();
+
+        when(playlistService.getPlaylist(eq(7L), eq("netease:42"))).thenReturn(
+                PlaylistVO.builder()
+                        .id("netease:42")
+                        .name("Night Float")
+                        .platform("netease")
+                        .trackCount(1)
+                        .tracks(List.of(seed))
+                        .build());
+
+        when(sessionMapper.insert(any(MoodSession.class))).thenAnswer(inv -> {
+            MoodSession s = inv.getArgument(0);
+            s.setId(900L);
+            return 1;
+        });
+
+        PlatformBinding binding = new PlatformBinding();
+        binding.setPlatform("netease");
+        binding.setCookieEncrypted("enc");
+        when(platformBindingService.getValidBinding(7L, "netease")).thenReturn(binding);
+        when(aesUtil.decrypt("enc")).thenReturn("cookie");
+
+        JsonNode emptyNode = objectMapper.createObjectNode();
+        when(musicApiClient.getUserLikedSongs(anyString(), anyString())).thenReturn(emptyNode);
+        when(musicApiClient.getRecommendSongs(anyString(), anyString())).thenReturn(emptyNode);
+        when(musicApiClient.searchSongs(anyString(), anyString(), anyInt(), any())).thenReturn(emptyNode);
+
+        when(llmClient.complete(anyString(), anyString())).thenReturn("[]");
+
+        RadioQueueVO result = playerService.startRadioFromPlaylist(7L, "netease:42", 30);
+
+        assertEquals(900L, result.getSessionId());
+        assertEquals("playlist", result.getScene());
+        assertTrue(result.getMoodSummary().contains("Night Float"));
+        assertNotNull(result.getSongs());
+        assertFalse(result.getSongs().isEmpty());
+        assertEquals("Night Walk", result.getSongs().get(0).getTitle());
+
+        ArgumentCaptor<MoodSession> sessionCaptor = ArgumentCaptor.forClass(MoodSession.class);
+        verify(sessionMapper).insert(sessionCaptor.capture());
+        assertEquals("playlist", sessionCaptor.getValue().getScene());
     }
 }

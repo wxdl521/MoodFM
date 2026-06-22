@@ -17,6 +17,8 @@ interface StartRadioData { moodText: string; scene?: string; platform?: 'netease
 export const radioApi = {
   startRadio:      (data: StartRadioData): Promise<RadioQueueVO>          => api.post('/radio/start', data),
   startFromSong:   (songId: string): Promise<RadioQueueVO>                => api.post('/radio/start-from-song', { songId: Number(songId) }),
+  playFromPlaylist: (playlistId: string, durationMinutes?: number | null): Promise<RadioQueueVO> =>
+    api.post('/radio/play-from-playlist', { playlistId, durationMinutes }),
   sendFeedback:    (event: FeedbackEvent, payload: FeedbackPayload): Promise<void> => api.post('/radio/feedback', { ...payload, eventType: event }),
   getSessions:     (limit = 5): Promise<MoodSessionVO[]>                  => api.get('/radio/sessions', { params: { limit } }),
   getSongUrl:      (platform: string, songId: string): Promise<string>    => api.get(`/radio/url?platform=${platform}&songId=${songId}`),

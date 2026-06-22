@@ -2,6 +2,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { usePlayerStore } from '@/stores/player'
+import { useRadioStore } from '@/stores/radio'
+import { radioApi } from '@/api/radio'
 import MoodBlob from '@/components/common/MoodBlob.vue'
 import { playlistApi } from '@/api/playlist'
 import { songApi } from '@/api/song'
@@ -11,7 +13,9 @@ import { toPlatform } from '@/utils/platform'
 const router = useRouter()
 const route = useRoute()
 const player = usePlayerStore()
+const radio = useRadioStore()
 const loading = ref(true)
+const radioLoading = ref(false)
 const error = ref<string | null>(null)
 const playlist = ref<any>(null)
 
@@ -104,6 +108,46 @@ async function playSong(it: TrackItem) {
   }
 }
 
+function voToSong(s: { id?: number | string; title: string; artist: string; album?: string; platform?: string; platformSongId?: string; durationSeconds?: number; duration?: number; coverUrl?: string; playUrl?: string; recommendReason?: string; urlSource?: string }): Song {
+  return {
+    id: String(s.id ?? ''),
+    title: s.title,
+    artist: s.artist,
+    album: s.album,
+    platform: toPlatform(s.platform ?? playlist.value?.platform),
+    platformSongId: s.platformSongId ?? '',
+    duration: s.durationSeconds ?? s.duration ?? 0,
+    coverUrl: s.coverUrl,
+    audioUrl: s.playUrl,
+    recommendReason: s.recommendReason,
+    urlSource: s.urlSource,
+  }
+}
+
+async function startRadioFromPlaylist() {
+  const id = route.params.id as string
+  if (!id) return
+  radioLoading.value = true
+  try {
+    const res = await radioApi.playFromPlaylist(id, 30)
+    radio.setMoodText(res.moodSummary || '基于歌单电台')
+    radio.setScene(res.scene || 'playlist')
+    player.setSessionId(String(res.sessionId))
+    if (res.songs && res.songs.length > 0) {
+      const [first, ...rest] = res.songs
+      player.setSong(voToSong(first))
+      player.setQueue(rest.map(voToSong))
+      player.setPlaying(true)
+    }
+    router.push('/player')
+  } catch (e: unknown) {
+    const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message?: string }).message) : '生成电台失败'
+    alert(msg)
+  } finally {
+    radioLoading.value = false
+  }
+}
+
 async function playAll() {
   if (tracks.value.length === 0) return
   const ids = tracks.value.map(t => parseInt(t.id)).filter(n => !isNaN(n))
@@ -173,6 +217,9 @@ async function playAll() {
           </div>
           <div class="row" style="margin-top:24px;gap:10px;flex-wrap:wrap;">
             <button class="btn" style="height:48px;padding:0 22px;" @click="playAll()">▶ 播放 · PLAY ALL</button>
+            <button class="btn-pill" style="height:48px;" :disabled="radioLoading || tracks.length === 0" @click="startRadioFromPlaylist()">
+              {{ radioLoading ? '调台中…' : '情绪电台' }}
+            </button>
             <button class="btn-pill" style="height:48px;">♡ 收藏</button>
             <button class="btn-pill" style="height:48px;">↓ 下载</button>
             <button class="btn-pill" style="height:48px;">↗ 分享</button>

@@ -5,6 +5,7 @@ import com.moodfm.common.util.SecurityUtil;
 import com.moodfm.domain.dto.feedback.PlaybackFeedbackDto;
 import com.moodfm.domain.dto.radio.BatchFeedbackRequest;
 import com.moodfm.domain.dto.radio.MoodInputRequest;
+import com.moodfm.domain.dto.radio.PlayFromPlaylistRequest;
 import com.moodfm.domain.dto.radio.SessionDurationRequest;
 import com.moodfm.domain.dto.radio.StartFromSongRequest;
 import com.moodfm.domain.vo.RadioQueueVO;
@@ -22,7 +23,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @Tag(name = "AI 电台", description = "心情电台核心接口")
 @RestController
@@ -126,14 +126,14 @@ public class RadioController {
         return R.ok(playerService.getRecentSessions(SecurityUtil.getUserId(ud), limit));
     }
 
-    // ── 从歌单播放 (stub) ─────────────────────────────────────────────
-
     @Operation(summary = "从歌单启动电台")
     @PostMapping("/play-from-playlist")
-    public R<Void> playFromPlaylist(@RequestBody Map<String, Object> body,
-                                    @AuthenticationPrincipal UserDetails ud) {
-        // PlaylistController 建成后在此接入
-        return R.ok();
+    public R<RadioQueueVO> playFromPlaylist(@Valid @RequestBody PlayFromPlaylistRequest request,
+                                            @AuthenticationPrincipal UserDetails ud) {
+        return R.ok(playerService.startRadioFromPlaylist(
+                SecurityUtil.getUserId(ud),
+                request.getPlaylistId(),
+                request.getDurationMinutes()));
     }
 
 }
