@@ -37,6 +37,7 @@ describe('usePlaybackControls', () => {
       currentTime: ref(10),
       duration: ref(200),
       isReady: ref(true),
+      loadedUrl: ref<string | null>(null),
       play: vi.fn(),
       pause: vi.fn(),
       stop: vi.fn(),

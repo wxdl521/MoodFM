@@ -55,7 +55,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useRadioStore } from '@/stores/radio'
 import { useUiStore } from '@/stores/ui'
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
-import { logger } from '@/utils/logger'
+
 import { usePlaybackControls } from './composables/usePlaybackControls'
 import { useLyrics } from './composables/useLyrics'
 import { useTrackActions } from './composables/useTrackActions'
@@ -94,7 +94,8 @@ const lyricCurrentTime = computed(() =>
     : player.progress * totalDuration.value,
 )
 
-let handleNextFn: () => void = () => {}
+/** Deferred binding: useTrackActions needs handleNext before usePlaybackControls defines it. */
+const deferredNext = { run: (): void => undefined }
 
 const {
   liked,
@@ -103,7 +104,7 @@ const {
   toggleLike,
   handleDislike,
   handleShare,
-} = useTrackActions(() => handleNextFn())
+} = useTrackActions(() => deferredNext.run())
 
 const {
   handlePlayPause,
@@ -112,10 +113,10 @@ const {
   handleSkip,
   canPrev,
   blacklistToast,
-  _advanceQueue,
+  bootstrapPlayback,
 } = usePlaybackControls(audio, showInfoToast)
 
-handleNextFn = handleNext
+deferredNext.run = handleNext
 
 const {
   lyricsLines,
@@ -139,36 +140,7 @@ function goBack() {
 }
 
 onMounted(() => {
-  if (!player.currentSong) {
-    router.replace('/home')
-    return
-  }
-  if (player.currentSong.audioUrl) {
-    if (audio.loadedUrl.value !== player.currentSong.audioUrl) {
-      audio.load(player.currentSong.audioUrl)
-        .then(() => audio.play())
-        .catch(err => {
-          logger.warn('player:audio-load-mount', err)
-          const failedTitle = player.currentSong?.title
-          if (player.queue.length > 0) {
-            if (failedTitle) showInfoToast(`「${failedTitle}」无法播放，已跳过`)
-            else showInfoToast('该歌曲无法播放，已跳过')
-            handleNext()
-          } else {
-            if (failedTitle) showInfoToast(`「${failedTitle}」无法播放`)
-            else showInfoToast('该歌曲无法播放')
-            audio.stop()
-            player.setPlaying(false)
-          }
-        })
-    }
-  } else {
-    if (player.queue.length > 0) {
-      _advanceQueue()
-    } else {
-      player.setPlaying(false)
-    }
-  }
+  bootstrapPlayback({ onNoCurrentSong: () => router.replace('/home') })
 })
 
 onUnmounted(() => {

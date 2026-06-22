@@ -8,6 +8,7 @@ type AudioHandle = {
   currentTime: { value: number }
   duration: { value: number }
   isReady: { value: boolean }
+  loadedUrl: { value: string | null }
   play: () => void
   pause: () => void
   stop: () => void
@@ -26,7 +27,7 @@ export function usePlaybackControls(
 
   const canPrev = computed(() => player.history.length > 0)
 
-  function _advanceQueue() {
+  function advanceQueue() {
     player.next()
     const song = player.currentSong
     if (song?.audioUrl) {
@@ -37,14 +38,14 @@ export function usePlaybackControls(
           const failedTitle = song?.title
           if (failedTitle) showInfoToast(`「${failedTitle}」无法播放，已跳过`)
           else showInfoToast('该歌曲无法播放，已跳过')
-          if (player.queue.length > 0) _advanceQueue()
+          if (player.queue.length > 0) advanceQueue()
           else { audio.stop(); player.setPlaying(false) }
         })
     } else if (player.queue.length > 0) {
       const skippedTitle = song?.title
       if (skippedTitle) showInfoToast(`「${skippedTitle}」无法播放，已跳过`)
       else showInfoToast('该歌曲无法播放，已跳过')
-      _advanceQueue()
+      advanceQueue()
     } else {
       if (song) showInfoToast('该歌曲无法播放，队列已空')
       audio.stop()
@@ -82,7 +83,7 @@ export function usePlaybackControls(
           })
         }
       } else if (player.queue.length > 0) {
-        _advanceQueue()
+        advanceQueue()
       } else {
         player.togglePlay()
       }
@@ -94,7 +95,7 @@ export function usePlaybackControls(
     const sid = player.sessionId
     const playedSecs = Math.round(audio.currentTime.value) || 0
     const totalSecs = Math.round(audio.duration.value || player.duration) || 0
-    _advanceQueue()
+    advanceQueue()
     _sendSkipFeedback(prevSong, sid, playedSecs, totalSecs)
   }
 
@@ -117,7 +118,7 @@ export function usePlaybackControls(
     const totalSecs = Math.round(audio.duration.value || player.duration) || 0
     const skippedArtist = skippedSong?.artist
 
-    _advanceQueue()
+    advanceQueue()
     _sendSkipFeedback(skippedSong, sid, playedSecs, totalSecs)
 
     if (!skippedArtist) return
@@ -141,6 +142,38 @@ export function usePlaybackControls(
     }
   }
 
+  /** Mount-time playback bootstrap: load current track or advance when URL missing. */
+  function bootstrapPlayback(options: { onNoCurrentSong: () => void }) {
+    if (!player.currentSong) {
+      options.onNoCurrentSong()
+      return
+    }
+    if (player.currentSong.audioUrl) {
+      if (audio.loadedUrl.value !== player.currentSong.audioUrl) {
+        audio.load(player.currentSong.audioUrl)
+          .then(() => audio.play())
+          .catch(err => {
+            logger.warn('player:audio-load-mount', err)
+            const failedTitle = player.currentSong?.title
+            if (player.queue.length > 0) {
+              if (failedTitle) showInfoToast(`「${failedTitle}」无法播放，已跳过`)
+              else showInfoToast('该歌曲无法播放，已跳过')
+              advanceQueue()
+            } else {
+              if (failedTitle) showInfoToast(`「${failedTitle}」无法播放`)
+              else showInfoToast('该歌曲无法播放')
+              audio.stop()
+              player.setPlaying(false)
+            }
+          })
+      }
+    } else if (player.queue.length > 0) {
+      advanceQueue()
+    } else {
+      player.setPlaying(false)
+    }
+  }
+
   return {
     handlePlayPause,
     handleNext,
@@ -148,6 +181,7 @@ export function usePlaybackControls(
     handleSkip,
     canPrev,
     blacklistToast,
-    _advanceQueue,
+    advanceQueue,
+    bootstrapPlayback,
   }
 }

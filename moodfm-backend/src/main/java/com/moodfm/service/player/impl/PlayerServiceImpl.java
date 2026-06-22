@@ -21,6 +21,8 @@ import com.moodfm.service.player.PlayerService;
 import com.moodfm.domain.vo.PlaylistVO;
 import com.moodfm.service.player.impl.catalog.SongCatalogService;
 import com.moodfm.service.player.impl.playurl.PlayUrlService;
+import com.moodfm.service.player.impl.playlist.PlaylistRadioHelper;
+import com.moodfm.service.player.impl.queue.RadioQueueMaintenanceService;
 import com.moodfm.service.player.impl.queue.RadioQueueStore;
 import com.moodfm.service.player.impl.recall.CandidateRecallService;
 import jakarta.annotation.PreDestroy;
@@ -30,7 +32,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
@@ -52,6 +53,8 @@ public class PlayerServiceImpl implements PlayerService {
     private final SongCatalogService songCatalogService;
     private final RadioQueueStore radioQueueStore;
     private final PlaylistService playlistService;
+    private final PlaylistRadioHelper playlistRadioHelper;
+    private final RadioQueueMaintenanceService radioQueueMaintenanceService;
 
     /** Virtual Thread executor for background tasks (Feature 2: queue auto-refill) */
     private final java.util.concurrent.ExecutorService bgExecutor = Executors.newVirtualThreadPerTaskExecutor();
@@ -60,10 +63,6 @@ public class PlayerServiceImpl implements PlayerService {
     public void shutdown() {
         bgExecutor.close();
     }
-
-    private static final int RERANK_EVERY = 3;
-    private static final int REFILL_THRESHOLD = 5;
-    private static final int RERANK_NEXT_N = 5;
 
     // ===================== getRecentSessions =====================
 
@@ -111,7 +110,7 @@ public class PlayerServiceImpl implements PlayerService {
         String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
         String platform = binding.getPlatform();
 
-        // 4. 5 路并行召回 + 反馈过滤 + 用户偏好
+        // 4. 6 路并行召回 + 过滤链 + 用户偏好
         List<SongVO> candidates = candidateRecallService.recallSongs(platform, cookie, moodParams, userId);
 
         // 5. AI 重排 + 生成推荐理由
@@ -187,7 +186,7 @@ public class PlayerServiceImpl implements PlayerService {
         String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
         String platform = binding.getPlatform();
 
-        // 5. 5 路并行召回（复用现有管道，关键词已偏向种子歌曲）
+        // 5. 6 路并行召回（复用现有管道，关键词已偏向种子歌曲）
         List<SongVO> candidates = candidateRecallService.recallSongs(platform, cookie, moodParams, userId);
 
         // 6. 过滤掉种子歌曲本身
@@ -247,7 +246,7 @@ public class PlayerServiceImpl implements PlayerService {
             throw new BizException(ResultCode.RECALL_FAILED, "无法识别歌单所属平台");
         }
 
-        MoodParams moodParams = buildMoodParamsFromPlaylist(playlist, playlistTracks);
+        MoodParams moodParams = playlistRadioHelper.buildMoodParamsFromPlaylist(playlist, playlistTracks);
 
         MoodSession session = new MoodSession();
         session.setUserId(userId);
@@ -267,7 +266,7 @@ public class PlayerServiceImpl implements PlayerService {
         String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
 
         List<SongVO> recalled = candidateRecallService.recallSongs(platform, cookie, moodParams, userId);
-        List<SongVO> merged = mergePlaylistWithRecalled(playlistTracks, recalled);
+        List<SongVO> merged = playlistRadioHelper.mergePlaylistWithRecalled(playlistTracks, recalled);
 
         List<SongVO> ranked = aiRankingService.rank(merged, moodParams);
         playUrlService.enrichWithPlayUrls(ranked, platform, cookie);
@@ -286,79 +285,6 @@ public class PlayerServiceImpl implements PlayerService {
                 .build();
     }
 
-    private MoodParams buildMoodParamsFromPlaylist(PlaylistVO playlist, List<SongVO> tracks) {
-        MoodParams moodParams = MoodParams.defaultParams();
-        moodParams.setSceneInferred("playlist");
-
-        LinkedHashSet<String> artists = new LinkedHashSet<>();
-        LinkedHashSet<String> genres = new LinkedHashSet<>();
-        double valenceSum = 0;
-        double energySum = 0;
-        int featureCount = 0;
-
-        int limit = Math.min(tracks.size(), 15);
-        for (int i = 0; i < limit; i++) {
-            SongVO track = tracks.get(i);
-            if (track.getArtist() != null && !track.getArtist().isBlank()) {
-                artists.add(track.getArtist().trim());
-            }
-            if (track.getId() != null) {
-                Song dbSong = songMapper.selectById(track.getId());
-                if (dbSong != null && dbSong.getFeatures() != null && !dbSong.getFeatures().isBlank()) {
-                    try {
-                        JsonNode features = objectMapper.readTree(dbSong.getFeatures());
-                        String genre = features.path("genre").asText(null);
-                        if (genre != null && !genre.isBlank()) genres.add(genre);
-                        if (features.has("valence")) {
-                            valenceSum += features.path("valence").asDouble(0.5);
-                            energySum += features.path("energy").asDouble(0.5);
-                            featureCount++;
-                        }
-                    } catch (Exception ignored) {}
-                }
-            }
-        }
-
-        if (genres.isEmpty() && playlist.getName() != null && !playlist.getName().isBlank()) {
-            genres.add(playlist.getName().trim());
-        }
-        if (genres.isEmpty()) genres.add("歌单");
-
-        moodParams.setVibeKeywords(artists.stream().limit(6).collect(Collectors.toList()));
-        moodParams.setPreferredGenres(genres.stream().limit(5).collect(Collectors.toList()));
-
-        if (featureCount > 0 && moodParams.getMood() != null) {
-            moodParams.getMood().setValence(valenceSum / featureCount);
-            moodParams.getMood().setEnergy(energySum / featureCount);
-        }
-
-        return moodParams;
-    }
-
-    private List<SongVO> mergePlaylistWithRecalled(List<SongVO> playlistTracks, List<SongVO> recalled) {
-        LinkedHashMap<String, SongVO> byKey = new LinkedHashMap<>();
-        for (SongVO track : playlistTracks) {
-            String key = songDedupeKey(track);
-            if (key != null) byKey.putIfAbsent(key, track);
-        }
-        for (SongVO song : recalled) {
-            String key = songDedupeKey(song);
-            if (key != null) byKey.putIfAbsent(key, song);
-        }
-        return new ArrayList<>(byKey.values());
-    }
-
-    private String songDedupeKey(SongVO song) {
-        if (song.getPlatformSongId() != null && !song.getPlatformSongId().isBlank()) {
-            String p = song.getPlatform() != null ? song.getPlatform() : "";
-            return p + ":" + song.getPlatformSongId();
-        }
-        if (song.getTitle() != null && song.getArtist() != null) {
-            return song.getTitle() + "|" + song.getArtist();
-        }
-        return null;
-    }
-
     // ===================== getNextBatch (Feature 2: 消费 + 自动补充) =====================
 
     @Override
@@ -368,13 +294,11 @@ public class PlayerServiceImpl implements PlayerService {
 
         if (result.isEmpty()) return result;
 
-        // Feature 1: 更新重排计数器，检查是否需要重排
-        reRankIfNeeded(userId, sessionId);
+        radioQueueMaintenanceService.reRankIfNeeded(userId, sessionId, bgExecutor);
 
-        // Feature 2: 队列长度 < 阈值 → 后台补充
         Long remaining = radioQueueStore.size(userId);
-        if (remaining != null && remaining < REFILL_THRESHOLD) {
-            CompletableFuture.runAsync(() -> refillQueue(userId), bgExecutor);
+        if (remaining != null && remaining < radioQueueMaintenanceService.refillThreshold()) {
+            radioQueueMaintenanceService.refillIfBelowThreshold(userId, bgExecutor);
         }
 
         return result;
@@ -385,135 +309,9 @@ public class PlayerServiceImpl implements PlayerService {
         return playUrlService.getSongUrl(userId, platform, songId);
     }
 
-    // ===================== Feature 1: 动态重排 =====================
-
-    /**
-     * 每消费 RERANK_EVERY 首歌，触发一次重排：重新召回 + AI 排序 next RERANK_NEXT_N 首。
-     */
     @Override
     public void reRankIfNeeded(Long userId, Long sessionId) {
-        if (userId == null) return;
-        long count = radioQueueStore.incrementAndExpireRerankCounter(userId);
-        if (count >= RERANK_EVERY) {
-            radioQueueStore.resetRerankCounter(userId);
-            // 异步重排，不阻塞当前请求
-            CompletableFuture.runAsync(() -> doReRank(userId, sessionId), bgExecutor);
-            log.info("Triggered re-rank for user {} after {} songs", userId, count);
-        }
-    }
-
-    private void doReRank(Long userId, Long sessionId) {
-        try {
-            PlatformBinding binding = platformBindingService.getDefaultBinding(userId);
-            String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
-            String platform = binding.getPlatform();
-
-            // 从 DB 加载当前 session 的 MoodParams
-            MoodParams mood = loadMoodFromSession(sessionId);
-            if (mood == null) {
-                log.warn("Cannot re-rank: session {} mood params not found", sessionId);
-                return;
-            }
-
-            // 召回候选 + 反馈过滤 + 用户偏好
-            List<SongVO> candidates = candidateRecallService.recallSongs(platform, cookie, mood, userId);
-
-            // 去掉已在队列中的歌曲
-            Set<String> existingIds = radioQueueStore.peekIds(userId);
-            List<SongVO> fresh = candidates.stream()
-                    .filter(s -> s.getPlatformSongId() != null && !existingIds.contains(s.getPlatformSongId()))
-                    .collect(Collectors.toList());
-
-            if (fresh.isEmpty()) {
-                log.info("Re-rank: no new candidates for user {}", userId);
-                return;
-            }
-
-            // AI 重排
-            List<SongVO> ranked = aiRankingService.rank(fresh, mood);
-            List<SongVO> nextBatch = ranked.stream().limit(RERANK_NEXT_N).collect(Collectors.toList());
-
-            // 批量获取播放地址
-            playUrlService.enrichWithPlayUrls(nextBatch, platform, cookie);
-
-            // 持久化新歌曲
-            songCatalogService.persistSongs(nextBatch, platform);
-
-            // 插入到队列最前面（优先播放重排结果）
-            radioQueueStore.prependBatch(userId, nextBatch);
-
-            log.info("Re-ranked {} songs prepended to queue for user {}", nextBatch.size(), userId);
-        } catch (Exception e) {
-            log.error("Re-rank failed for user {}", userId, e);
-        }
-    }
-
-    // ===================== Feature 2: 队列自动补充 =====================
-
-    private void refillQueue(Long userId) {
-        try {
-            Long currentSize = radioQueueStore.size(userId);
-            if (currentSize != null && currentSize >= REFILL_THRESHOLD) return; // 并发安全：二次检查
-
-            PlatformBinding binding = platformBindingService.getDefaultBinding(userId);
-            String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
-            String platform = binding.getPlatform();
-
-            MoodParams mood = loadLatestMood(userId);
-            List<SongVO> candidates = candidateRecallService.recallSongs(platform, cookie, mood, userId);
-
-            // 去掉已在队列中的
-            Set<String> existingIds = radioQueueStore.peekIds(userId);
-            List<SongVO> fresh = candidates.stream()
-                    .filter(s -> s.getPlatformSongId() != null && !existingIds.contains(s.getPlatformSongId()))
-                    .limit(20)
-                    .collect(Collectors.toList());
-
-            if (fresh.isEmpty()) return;
-
-            // 批量获取播放地址
-            playUrlService.enrichWithPlayUrls(fresh, platform, cookie);
-
-            songCatalogService.persistSongs(fresh, platform);
-
-            radioQueueStore.appendBatch(userId, fresh);
-
-            log.info("Refilled queue with {} songs for user {}", fresh.size(), userId);
-        } catch (Exception e) {
-            log.warn("Queue refill failed for user {}", userId, e);
-        }
-    }
-
-    // ===================== 辅助方法 =====================
-
-    private MoodParams loadMoodFromSession(Long sessionId) {
-        if (sessionId == null) return null;
-        try {
-            MoodSession session = sessionMapper.selectById(sessionId);
-            if (session != null && session.getMoodParams() != null) {
-                return objectMapper.readValue(session.getMoodParams(), MoodParams.class);
-            }
-        } catch (Exception e) {
-            log.warn("Failed to load mood from session {}", sessionId, e);
-        }
-        return null;
-    }
-
-    private MoodParams loadLatestMood(Long userId) {
-        try {
-            MoodSession session = sessionMapper.selectOne(
-                    new LambdaQueryWrapper<MoodSession>()
-                            .eq(MoodSession::getUserId, userId)
-                            .isNotNull(MoodSession::getMoodParams)
-                            .orderByDesc(MoodSession::getStartedAt)
-                            .last("LIMIT 1"));
-            if (session != null && session.getMoodParams() != null) {
-                return objectMapper.readValue(session.getMoodParams(), MoodParams.class);
-            }
-        } catch (Exception e) {
-            log.warn("Failed to load latest mood for user {}", userId, e);
-        }
-        return MoodParams.defaultParams();
+        radioQueueMaintenanceService.reRankIfNeeded(userId, sessionId, bgExecutor);
     }
 
     private Long toLong(Object val) {

@@ -70,7 +70,7 @@ public class PlayUrlService {
             if (title == null || title.isBlank()) return null;
 
             String query = title + (artist != null && !artist.isBlank() ? " " + artist : "");
-            List<SongVO> hits = fetchSearch("netease", query, 5);
+            List<SongVO> hits = searchForFallback("netease", query, 5);
             if (hits.isEmpty()) return null;
 
             String neteaseId = hits.get(0).getPlatformSongId();
@@ -149,10 +149,14 @@ public class PlayUrlService {
         }
     }
 
-    // Deliberate temporary duplication: copied verbatim from PlayerServiceImpl.fetchSearch.
-    // fetchSearch is still needed by recall in PlayerServiceImpl (Task 5 will consolidate).
-    private List<SongVO> fetchSearch(String platform, String keywords, int limit) {
-        try { return MusicResponseParser.parseSongs(musicApiClient.searchSongs(platform, keywords, limit, null), platform); }
-        catch (Exception e) { log.warn("fetchSearch failed: {}", keywords, e); return List.of(); }
+    /** Netease title/artist search used only for QQ → Netease URL fallback. */
+    private List<SongVO> searchForFallback(String platform, String keywords, int limit) {
+        try {
+            return MusicResponseParser.parseSongs(
+                    musicApiClient.searchSongs(platform, keywords, limit, null), platform);
+        } catch (Exception e) {
+            log.warn("Fallback search failed: {}", keywords, e);
+            return List.of();
+        }
     }
 }
