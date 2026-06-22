@@ -36,6 +36,9 @@ import com.moodfm.service.player.impl.recall.source.GenreSearchRecallSource;
 import com.moodfm.service.player.impl.recall.source.VibeSearchRecallSource;
 import com.moodfm.service.player.impl.recall.source.ExploreSearchRecallSource;
 import com.moodfm.service.player.impl.recall.source.VectorRecallSource;
+import com.moodfm.service.player.impl.recall.filter.NegativeFeedbackFilter;
+import com.moodfm.service.player.impl.recall.filter.BlacklistKeywordFilter;
+import com.moodfm.service.player.impl.recall.filter.GlobalBlacklistFilter;
 import com.moodfm.service.player.impl.queue.RadioQueueStore;
 import com.moodfm.service.player.impl.recall.SongEmbeddingTextBuilder;
 import com.moodfm.service.user.UserService;
@@ -147,10 +150,17 @@ class PlayerServiceImplTest {
         ExploreSearchRecallSource explore = new ExploreSearchRecallSource(musicApiClient);
         VectorRecallSource vector = new VectorRecallSource(
                 embeddingService, qdrantService, vectorRecallMetrics, songMapper, songCatalogService);
+        // T3-2 Task 2: the 3 filters are now pluggable @Order CandidateFilter beans,
+        // built from the same leaf mocks and injected as an ordered list.
+        NegativeFeedbackFilter negativeFilter =
+                new NegativeFeedbackFilter(feedbackEventMapper, platformSongMappingMapper, objectMapper);
+        BlacklistKeywordFilter blacklistFilter =
+                new BlacklistKeywordFilter(userProfileMapper, objectMapper);
+        GlobalBlacklistFilter globalFilter = new GlobalBlacklistFilter(globalBlacklistMapper);
         CandidateRecallService candidateRecallService = new CandidateRecallService(
                 List.of(liked, recommend, genre, vibe, explore, vector),
-                songMapper, platformSongMappingMapper, feedbackEventMapper, userProfileMapper,
-                userService, globalBlacklistMapper, objectMapper, songEmbeddingTextBuilder);
+                List.of(negativeFilter, blacklistFilter, globalFilter),
+                songMapper, platformSongMappingMapper, userService, objectMapper, songEmbeddingTextBuilder);
         ReflectionTestUtils.setField(playerService, "candidateRecallService", candidateRecallService);
 
         // Default Redis stubs used across most tests (lenient: unused stubs OK).

@@ -3,33 +3,41 @@ package com.moodfm.service.player.impl.recall;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.moodfm.ai.model.MoodParams;
 import com.moodfm.domain.vo.SongVO;
-import com.moodfm.mapper.FeedbackEventMapper;
-import com.moodfm.mapper.GlobalBlacklistMapper;
 import com.moodfm.mapper.PlatformSongMappingMapper;
 import com.moodfm.mapper.SongMapper;
-import com.moodfm.mapper.UserProfileMapper;
+import com.moodfm.service.player.impl.recall.filter.CandidateFilter;
 import com.moodfm.service.player.impl.recall.source.RecallSource;
 import com.moodfm.service.user.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Regression test for the §4 timeout-fallback fix: verifies that ALL completed
- * sources (including vibe and explore positions) contribute songs to the merged
- * result, rather than the old fixed subset that dropped vibe/explore on timeout.
+ * Orchestration tests for {@link CandidateRecallService}:
+ * <ul>
+ *   <li>§4 timeout-fallback fix: ALL completed sources (including the vibe and
+ *       explore positions) contribute songs to the merged result, rather than the
+ *       old fixed subset that dropped vibe/explore on timeout.</li>
+ *   <li>T3-2 Task 2: the {@code List<CandidateFilter>} pipeline is applied in
+ *       {@code @Order} sequence (negative→keyword→global) and the result is
+ *       capped at 60.</li>
+ * </ul>
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -37,9 +45,6 @@ class RecallOrchestrationTest {
 
     @Mock private SongMapper songMapper;
     @Mock private PlatformSongMappingMapper platformSongMappingMapper;
-    @Mock private FeedbackEventMapper feedbackEventMapper;
-    @Mock private UserProfileMapper userProfileMapper;
-    @Mock private GlobalBlacklistMapper globalBlacklistMapper;
     @Mock private UserService userService;
     @Mock private SongEmbeddingTextBuilder songEmbeddingTextBuilder;
 
@@ -53,7 +58,7 @@ class RecallOrchestrationTest {
     private CandidateRecallService service;
 
     @BeforeEach
-    void setUp() throws Exception {
+    void setUp() {
         // Sources: liked, recommend, vibe, explore all return distinct songs.
         // throwingSource throws RuntimeException from inside recall().
         SongVO likedSong   = SongVO.builder().platformSongId("liked-1")  .title("LikedSong")  .artist("A").build();
@@ -82,21 +87,15 @@ class RecallOrchestrationTest {
         // throws inside recall() — the source bean's internal catch returns List.of()
         when(throwingSource.recall(any())).thenThrow(new RuntimeException("boom"));
 
-        // Stub orchestrator's remaining collaborators to prevent NPE / filter side-effects.
-        // userId == null → skips negative-feedback and blacklist-keyword filters.
-        when(globalBlacklistMapper.selectList(any())).thenReturn(Collections.emptyList());
+        // Stub orchestrator's remaining collaborators to prevent NPE.
+        // userId == null → user-level filters short-circuit; empty filter list → no filtering.
         when(platformSongMappingMapper.selectList(any())).thenReturn(Collections.emptyList()); // backfillFeatures returns early
         when(songEmbeddingTextBuilder.buildVectorQueryText(any(), any(), any())).thenReturn("music");
 
         service = new CandidateRecallService(
                 List.of(likedSource, recommendSource, vibeSource, exploreSource, throwingSource),
-                songMapper, platformSongMappingMapper, feedbackEventMapper, userProfileMapper,
-                userService, globalBlacklistMapper, new ObjectMapper(), songEmbeddingTextBuilder);
-
-        // Inject a real ObjectMapper (mirrors RecallScoringTest setUp)
-        var field = CandidateRecallService.class.getDeclaredField("objectMapper");
-        field.setAccessible(true);
-        field.set(service, new ObjectMapper());
+                List.of(),
+                songMapper, platformSongMappingMapper, userService, new ObjectMapper(), songEmbeddingTextBuilder);
     }
 
     /**
@@ -156,6 +155,48 @@ class RecallOrchestrationTest {
 
         assertTrue(result.size() <= 60, "result must be at most 60 songs");
         assertFalse(result.isEmpty());
+    }
+
+    /**
+     * T3-2 Task 2: the injected {@code List<CandidateFilter>} is applied as an ordered
+     * pipeline — each stage in turn, in list (i.e. {@code @Order}) sequence — and the
+     * final result is limited to 60. Recording filters assert real call order, not just
+     * "no throw". A single source returns 70 songs so the limit(60) cut is observable.
+     */
+    @Test
+    void recallSongs_filterChain_appliedInOrder_andResultLimitedTo60() {
+        @SuppressWarnings("unchecked")
+        RecallSource bigSource = mock(RecallSource.class);
+        List<SongVO> many = new ArrayList<>();
+        for (int i = 0; i < 70; i++) {
+            many.add(SongVO.builder().platformSongId("s-" + i).title("T" + i).artist("A").build());
+        }
+        when(bigSource.weight()).thenReturn(1.0);
+        when(bigSource.sourceName()).thenReturn("liked");
+        when(bigSource.recall(any())).thenReturn(many);
+
+        // 3 recording filters in @Order sequence; each returns the list unchanged so the
+        // chain reaches limit(60). Names mirror negative(10)→keyword(20)→global(30).
+        CandidateFilter negative = mock(CandidateFilter.class);
+        CandidateFilter keyword  = mock(CandidateFilter.class);
+        CandidateFilter global   = mock(CandidateFilter.class);
+        when(negative.filter(any(), any())).thenAnswer(inv -> inv.getArgument(1));
+        when(keyword.filter(any(), any())).thenAnswer(inv -> inv.getArgument(1));
+        when(global.filter(any(), any())).thenAnswer(inv -> inv.getArgument(1));
+
+        CandidateRecallService svc = new CandidateRecallService(
+                List.of(bigSource),
+                List.of(negative, keyword, global),
+                songMapper, platformSongMappingMapper, userService, new ObjectMapper(), songEmbeddingTextBuilder);
+
+        List<SongVO> result = svc.recallSongs("netease", "cookie", buildMood(0.5, 0.5), 42L);
+
+        assertEquals(60, result.size(), "result must be limited to 60");
+
+        InOrder inOrder = inOrder(negative, keyword, global);
+        inOrder.verify(negative).filter(eq(42L), any());
+        inOrder.verify(keyword).filter(eq(42L), any());
+        inOrder.verify(global).filter(eq(42L), any());
     }
 
     // -----------------------------------------------------------------------

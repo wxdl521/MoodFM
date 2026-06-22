@@ -8,6 +8,7 @@ import com.moodfm.domain.entity.*;
 import com.moodfm.domain.vo.PreferencesVO;
 import com.moodfm.domain.vo.SongVO;
 import com.moodfm.mapper.*;
+import com.moodfm.service.player.impl.recall.filter.CandidateFilter;
 import com.moodfm.service.player.impl.recall.source.RecallSource;
 import com.moodfm.service.user.UserService;
 import lombok.RequiredArgsConstructor;
@@ -28,12 +29,17 @@ import java.util.stream.Collectors;
  * a {@code List<RecallSource>} sorted by {@code @Order} ascending
  * (liked→recommend→genre→vibe→explore→vector).
  * <p>
+ * Each filter stage is a pluggable {@link CandidateFilter} Spring bean, injected
+ * as a {@code List<CandidateFilter>} sorted by {@code @Order} ascending and
+ * applied as an ordered pipeline (negative-feedback → blacklist-keyword →
+ * global-blacklist).
+ * <p>
  * Timeout fallback (§4 behavior fix): on timeout or partial failure the pipeline
  * now merges ALL completed sources — the old code dropped vibe-search and
  * explore-search unconditionally from the timeout catch branch.
  * <p>
  * Extracted from {@code PlayerServiceImpl} (T3-1 Task 5); recall paths made
- * pluggable beans in T3-2 Task 1.
+ * pluggable beans in T3-2 Task 1; filters made pluggable beans in T3-2 Task 2.
  */
 @Slf4j
 @Component
@@ -41,12 +47,10 @@ import java.util.stream.Collectors;
 public class CandidateRecallService {
 
     private final List<RecallSource> recallSources;
+    private final List<CandidateFilter> candidateFilters;
     private final SongMapper songMapper;
     private final PlatformSongMappingMapper platformSongMappingMapper;
-    private final FeedbackEventMapper feedbackEventMapper;
-    private final UserProfileMapper userProfileMapper;
     private final UserService userService;
-    private final GlobalBlacklistMapper globalBlacklistMapper;
     private final ObjectMapper objectMapper;
     private final SongEmbeddingTextBuilder songEmbeddingTextBuilder;
 
@@ -120,18 +124,11 @@ public class CandidateRecallService {
         // T1-1 + T1-2: 打分排序，替换 Collections.shuffle
         List<SongVO> deduped = scoreAndSort(dedup, sourceWeight, ctx.mood());
 
-        // Feature 4: 反馈评分过滤
-        if (userId != null) {
-            deduped = filterNegativeFeedback(userId, deduped);
+        // Feature 4/4b/4c: 有序过滤流水线（@Order: 负反馈→黑名单关键词→全局黑名单）。
+        // 每个过滤器是一个 CandidateFilter bean；userId==null 时用户级过滤器内部短路。
+        for (CandidateFilter filter : candidateFilters) {
+            deduped = filter.filter(userId, deduped);
         }
-
-        // Feature 4b: 黑名单关键词过滤
-        if (userId != null) {
-            deduped = filterBlacklistKeywords(userId, deduped);
-        }
-
-        // Feature 4c: 全局黑名单过滤（管理员设置，对所有用户生效）
-        deduped = filterGlobalBlacklist(deduped);
 
         return deduped.stream().limit(60).collect(Collectors.toList());
     }
@@ -307,176 +304,6 @@ public class CandidateRecallService {
             }
         }
         return false;
-    }
-
-    // ===================== Feature 4: 反馈评分过滤 =====================
-
-    /**
-     * 查询用户近期反馈，计算每首歌的得分，过滤掉严重负分歌曲。
-     * 信号权重: completed=+1, skip(playedSeconds<30)=-3, like=+5, volume_up=+1 (scaled 0.5)
-     * 使用 2x 整数缩放以支持 0.5 权重。
-     */
-    private List<SongVO> filterNegativeFeedback(Long userId, List<SongVO> candidates) {
-        try {
-            List<FeedbackEvent> recentEvents = feedbackEventMapper.selectList(
-                    new LambdaQueryWrapper<FeedbackEvent>()
-                            .eq(FeedbackEvent::getUserId, userId)
-                            .in(FeedbackEvent::getEventType, "completed", "skip", "like", "volume_up")
-                            .orderByDesc(FeedbackEvent::getCreatedAt)
-                            .last("LIMIT 200"));
-
-            if (recentEvents.isEmpty()) return candidates;
-
-            // 计算每首歌的反馈得分（2x 缩放：volume_up=1 代表 0.5）
-            Map<Long, Integer> songScores = new HashMap<>();
-            for (FeedbackEvent evt : recentEvents) {
-                if (evt.getSongId() == null) continue;
-                int delta = switch (evt.getEventType()) {
-                    case "completed" -> 2;
-                    case "like" -> 10;
-                    case "volume_up" -> 1;  // +0.5 scaled
-                    case "skip" -> {
-                        int played = parsePlayedSeconds(evt.getEventData());
-                        yield played < 30 ? -6 : 0;
-                    }
-                    default -> 0;
-                };
-                songScores.merge(evt.getSongId(), delta, Integer::sum);
-            }
-
-            // 从候选中移除严重负分歌曲（score < -10, 即 2x 缩放后等价于 -5）
-            // Batch lookup: collect all negative songIds, single DB query instead of N+1
-            Set<String> negativeIds = new HashSet<>();
-            List<Long> negativeSongIds = songScores.entrySet().stream()
-                    .filter(e -> e.getValue() < -10)
-                    .map(Map.Entry::getKey)
-                    .collect(Collectors.toList());
-            if (!negativeSongIds.isEmpty()) {
-                List<PlatformSongMapping> mappings = platformSongMappingMapper.selectList(
-                        new LambdaQueryWrapper<PlatformSongMapping>()
-                                .in(PlatformSongMapping::getSongId, negativeSongIds));
-                for (PlatformSongMapping m : mappings) {
-                    negativeIds.add(m.getPlatformSongId());
-                }
-            }
-
-            if (!negativeIds.isEmpty()) {
-                int beforeSize = candidates.size();
-                candidates = candidates.stream()
-                        .filter(s -> s.getPlatformSongId() == null || !negativeIds.contains(s.getPlatformSongId()))
-                        .collect(Collectors.toList());
-                log.info("Feedback filter: removed {} negative songs (was {})", beforeSize - candidates.size(), beforeSize);
-            }
-        } catch (Exception e) {
-            log.warn("Feedback filtering failed, skipping", e);
-        }
-        return candidates;
-    }
-
-    // ===================== Feature 4b: 黑名单关键词过滤 =====================
-
-    /**
-     * 从用户 UserProfile 获取黑名单关键词，过滤掉标题或歌手名包含关键词的歌曲。
-     * 简单的大小写不敏感子串匹配。
-     */
-    private List<SongVO> filterBlacklistKeywords(Long userId, List<SongVO> candidates) {
-        try {
-            UserProfile profile = userProfileMapper.selectByUserId(userId);
-            if (profile == null || profile.getBlacklistKeywords() == null || profile.getBlacklistKeywords().isBlank()) {
-                return candidates;
-            }
-
-            // Parse JSON array of keywords
-            List<String> keywords = objectMapper.readValue(profile.getBlacklistKeywords(),
-                    new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
-            if (keywords.isEmpty()) return candidates;
-
-            List<String> lowerKeywords = keywords.stream()
-                    .filter(k -> k != null && !k.isBlank())
-                    .map(String::toLowerCase)
-                    .collect(Collectors.toList());
-            if (lowerKeywords.isEmpty()) return candidates;
-
-            int beforeSize = candidates.size();
-            candidates = candidates.stream()
-                    .filter(song -> {
-                        String title = song.getTitle() != null ? song.getTitle().toLowerCase() : "";
-                        String artist = song.getArtist() != null ? song.getArtist().toLowerCase() : "";
-                        for (String kw : lowerKeywords) {
-                            if (title.contains(kw) || artist.contains(kw)) {
-                                return false;
-                            }
-                        }
-                        return true;
-                    })
-                    .collect(Collectors.toList());
-
-            int removed = beforeSize - candidates.size();
-            if (removed > 0) {
-                log.info("Blacklist keyword filter: removed {} songs for user {} (was {})", removed, userId, beforeSize);
-            }
-        } catch (Exception e) {
-            log.warn("Blacklist keyword filtering failed for user {}, skipping", userId, e);
-        }
-        return candidates;
-    }
-
-    // ===================== Feature 4c: 全局黑名单过滤 =====================
-
-    /**
-     * 从 global_blacklist 表加载管理员设置的黑名单，过滤掉命中的歌曲。
-     * 支持三种类型：artist（精确艺术家名）、song（精确歌曲标题）、keyword（子串匹配）。
-     * 对所有用户生效，无需 Redis 缓存（表数据量小，type 列有索引）。
-     */
-    private List<SongVO> filterGlobalBlacklist(List<SongVO> candidates) {
-        try {
-            List<GlobalBlacklist> blacklist = globalBlacklistMapper.selectList(null);
-            if (blacklist.isEmpty()) return candidates;
-
-            Set<String> bannedArtists  = new HashSet<>();
-            Set<String> bannedSongs    = new HashSet<>();
-            List<String> bannedKeywords = new ArrayList<>();
-
-            for (GlobalBlacklist entry : blacklist) {
-                String v = entry.getValue() != null ? entry.getValue().toLowerCase() : "";
-                switch (entry.getType()) {
-                    case "artist"  -> bannedArtists.add(v);
-                    case "song"    -> bannedSongs.add(v);
-                    case "keyword" -> { if (!v.isBlank()) bannedKeywords.add(v); }
-                }
-            }
-
-            int before = candidates.size();
-            candidates = candidates.stream().filter(song -> {
-                String title  = song.getTitle()  != null ? song.getTitle().toLowerCase()  : "";
-                String artist = song.getArtist() != null ? song.getArtist().toLowerCase() : "";
-
-                if (bannedArtists.contains(artist)) return false;
-                if (bannedSongs.contains(title))    return false;
-                for (String kw : bannedKeywords) {
-                    if (title.contains(kw) || artist.contains(kw)) return false;
-                }
-                return true;
-            }).collect(Collectors.toList());
-
-            int removed = before - candidates.size();
-            if (removed > 0) {
-                log.info("Global blacklist filter: removed {} songs (was {})", removed, before);
-            }
-        } catch (Exception e) {
-            log.warn("Global blacklist filtering failed, skipping", e);
-        }
-        return candidates;
-    }
-
-    private int parsePlayedSeconds(String eventData) {
-        if (eventData == null || eventData.isBlank()) return 0;
-        try {
-            JsonNode node = objectMapper.readTree(eventData);
-            return node.path("playedSeconds").asInt(0);
-        } catch (Exception e) {
-            return 0;
-        }
     }
 
     // ===================== Feature 5: 用户偏好合并 =====================
