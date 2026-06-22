@@ -1,7 +1,10 @@
 package com.moodfm.service.feedback.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.moodfm.common.exception.BizException;
+import com.moodfm.domain.entity.FeedbackEvent;
 import com.moodfm.common.result.ResultCode;
 import com.moodfm.domain.dto.feedback.PlaybackFeedbackDto;
 import com.moodfm.domain.entity.PlatformBinding;
@@ -11,16 +14,19 @@ import com.moodfm.mapper.FeedbackEventMapper;
 import com.moodfm.mapper.PlayRecordMapper;
 import com.moodfm.mapper.PlatformSongMappingMapper;
 import com.moodfm.service.platform.PlatformBindingService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -43,6 +49,13 @@ class FeedbackServiceImplTest {
     private static final Long USER_ID   = 1L;
     private static final Long SONG_ID   = 100L;
     private static final Long SESSION_ID = 9L;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @BeforeEach
+    void injectObjectMapper() {
+        ReflectionTestUtils.setField(feedbackService, "objectMapper", objectMapper);
+    }
 
     /** Build a minimal skip DTO — the event type that writes a play_record. */
     private PlaybackFeedbackDto skipDto(String platform) {
@@ -72,6 +85,22 @@ class FeedbackServiceImplTest {
     }
 
     // ── Test cases ────────────────────────────────────────────────────────────
+
+    @Test
+    void record_skip_persistsPlayedSecondsInEventData() throws Exception {
+        PlaybackFeedbackDto dto = skipDto("netease");
+        dto.setPlayedSeconds(45);
+        dto.setTotalSeconds(200);
+
+        feedbackService.record(USER_ID, dto);
+
+        ArgumentCaptor<FeedbackEvent> captor = ArgumentCaptor.forClass(FeedbackEvent.class);
+        verify(feedbackEventMapper).insert(captor.capture());
+        assertNotNull(captor.getValue().getEventData());
+        JsonNode node = objectMapper.readTree(captor.getValue().getEventData());
+        assertEquals(45, node.path("playedSeconds").asInt());
+        assertEquals(200, node.path("totalSeconds").asInt());
+    }
 
     /**
      * Step 1: dto.platform is set → use it directly; mapper and binding not consulted.

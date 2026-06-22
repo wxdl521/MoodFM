@@ -3,6 +3,9 @@ import { usePlayerStore } from '@/stores/player'
 import { radioApi } from '@/api/radio'
 import { blacklistApi } from '@/api/blacklist'
 import { logger } from '@/utils/logger'
+import { mapSongVoToSong } from '@/utils/songVo'
+
+const QUEUE_REFILL_THRESHOLD = 3
 
 type AudioHandle = {
   currentTime: { value: number }
@@ -24,8 +27,26 @@ export function usePlaybackControls(
   const lastSkippedArtist = ref<string | null>(null)
   const consecutiveSkips = ref(0)
   const blacklistToast = ref<string | null>(null)
+  const refillInFlight = ref(false)
 
   const canPrev = computed(() => player.history.length > 0)
+
+  async function maybeRefillQueue() {
+    const sid = player.sessionId
+    if (!sid || refillInFlight.value) return
+    if (player.queue.length > QUEUE_REFILL_THRESHOLD) return
+    refillInFlight.value = true
+    try {
+      const batch = await radioApi.getNextBatch(Number(sid))
+      if (batch.length > 0) {
+        player.addToQueue(batch.map(mapSongVoToSong))
+      }
+    } catch (err) {
+      logger.warn('player:queue-refill', err)
+    } finally {
+      refillInFlight.value = false
+    }
+  }
 
   function advanceQueue() {
     player.next()
@@ -51,6 +72,7 @@ export function usePlaybackControls(
       audio.stop()
       player.setPlaying(false)
     }
+    void maybeRefillQueue()
   }
 
   function _sendSkipFeedback(
@@ -172,6 +194,7 @@ export function usePlaybackControls(
     } else {
       player.setPlaying(false)
     }
+    void maybeRefillQueue()
   }
 
   return {

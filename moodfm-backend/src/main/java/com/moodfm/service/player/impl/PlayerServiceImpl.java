@@ -97,18 +97,16 @@ public class PlayerServiceImpl implements PlayerService {
         // durationMinutes == null  → "无限"，封顶 24h TTL（保留 marker，让 isSessionExpired 在 24h 内返回 false）
         // durationMinutes != null  → 设置对应秒数的 TTL
         Integer durationMinutes = request.getDurationMinutes();
-        if (durationMinutes == null) {
-            // 无限时长：marker 封顶 24 小时，避免 Redis 中永不过期的 key 无限堆积。
-            // 行为变化：连续播放超过 24h 的会话会被判定过期，需重新开台（可接受）。
-            radioQueueStore.markSessionTtlInfinite(session.getId());
-        } else {
-            radioQueueStore.markSessionTtlSeconds(session.getId(), durationMinutes * 60);
-        }
-
         // 3. 获取默认绑定平台 + cookie
         PlatformBinding binding = platformBindingService.getDefaultBinding(userId);
         String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
         String platform = binding.getPlatform();
+
+        if (durationMinutes == null) {
+            radioQueueStore.markSessionTtlInfinite(session.getId(), platform);
+        } else {
+            radioQueueStore.markSessionTtlSeconds(session.getId(), durationMinutes * 60, platform);
+        }
 
         // 4. 6 路并行召回 + 过滤链 + 用户偏好
         List<SongVO> candidates = candidateRecallService.recallSongs(platform, cookie, moodParams, userId);
@@ -122,8 +120,8 @@ public class PlayerServiceImpl implements PlayerService {
         // 6. 持久化歌曲 + 平台映射（Feature 3 前置）
         songCatalogService.persistSongs(ranked, platform);
 
-        // 7. 存入 Redis 队列（原子替换，避免 delete + rightPushAll 之间的竞态窗口）
-        radioQueueStore.replaceQueue(userId, ranked);
+        // 7. 首批歌曲随 HTTP 响应下发；Redis 队列由 /next 按需补充
+        radioQueueStore.replaceQueue(userId, List.of());
 
         // 8. 重置重排计数器
         radioQueueStore.resetRerankCounter(userId);
@@ -178,13 +176,12 @@ public class PlayerServiceImpl implements PlayerService {
         session.setDurationMinutes(30);
         sessionMapper.insert(session);
 
-        // 3.5 存储会话时长 TTL（默认 30 分钟）
-        radioQueueStore.markSessionTtlSeconds(session.getId(), 30 * 60);
-
         // 4. 获取默认绑定平台 + cookie
         PlatformBinding binding = platformBindingService.getDefaultBinding(userId);
         String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
         String platform = binding.getPlatform();
+
+        radioQueueStore.markSessionTtlSeconds(session.getId(), 30 * 60, platform);
 
         // 5. 6 路并行召回（复用现有管道，关键词已偏向种子歌曲）
         List<SongVO> candidates = candidateRecallService.recallSongs(platform, cookie, moodParams, userId);
@@ -214,7 +211,7 @@ public class PlayerServiceImpl implements PlayerService {
         // 8. 持久化 + 存入 Redis 队列
         songCatalogService.persistSongs(ranked, platform);
 
-        radioQueueStore.replaceQueue(userId, ranked);
+        radioQueueStore.replaceQueue(userId, List.of());
 
         radioQueueStore.resetRerankCounter(userId);
 
@@ -256,14 +253,14 @@ public class PlayerServiceImpl implements PlayerService {
         session.setDurationMinutes(durationMinutes != null ? durationMinutes : 30);
         sessionMapper.insert(session);
 
-        if (durationMinutes == null) {
-            radioQueueStore.markSessionTtlInfinite(session.getId());
-        } else {
-            radioQueueStore.markSessionTtlSeconds(session.getId(), durationMinutes * 60);
-        }
-
         PlatformBinding binding = platformBindingService.getValidBinding(userId, platform);
         String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
+
+        if (durationMinutes == null) {
+            radioQueueStore.markSessionTtlInfinite(session.getId(), platform);
+        } else {
+            radioQueueStore.markSessionTtlSeconds(session.getId(), durationMinutes * 60, platform);
+        }
 
         List<SongVO> recalled = candidateRecallService.recallSongs(platform, cookie, moodParams, userId);
         List<SongVO> merged = playlistRadioHelper.mergePlaylistWithRecalled(playlistTracks, recalled);
@@ -272,7 +269,7 @@ public class PlayerServiceImpl implements PlayerService {
         playUrlService.enrichWithPlayUrls(ranked, platform, cookie);
         songCatalogService.persistSongs(ranked, platform);
 
-        radioQueueStore.replaceQueue(userId, ranked);
+        radioQueueStore.replaceQueue(userId, List.of());
         radioQueueStore.resetRerankCounter(userId);
 
         String playlistName = playlist.getName() != null ? playlist.getName() : "歌单";
@@ -289,16 +286,18 @@ public class PlayerServiceImpl implements PlayerService {
 
     @Override
     public List<SongVO> getNextBatch(Long userId, Long sessionId) {
-        // 原子弹出：每首歌逐个消费，避免并发问题
-        List<SongVO> result = radioQueueStore.popBatch(userId, 5);
-
-        if (result.isEmpty()) return result;
-
         radioQueueMaintenanceService.reRankIfNeeded(userId, sessionId, bgExecutor);
 
+        List<SongVO> result = radioQueueStore.popBatch(userId, 5);
+
         Long remaining = radioQueueStore.size(userId);
-        if (remaining != null && remaining < radioQueueMaintenanceService.refillThreshold()) {
-            radioQueueMaintenanceService.refillIfBelowThreshold(userId, bgExecutor);
+        boolean needsRefill = result.isEmpty()
+                || (remaining != null && remaining < radioQueueMaintenanceService.refillThreshold());
+        if (needsRefill) {
+            radioQueueMaintenanceService.refillQueueSync(userId, sessionId);
+            if (result.isEmpty()) {
+                result = radioQueueStore.popBatch(userId, 5);
+            }
         }
 
         return result;

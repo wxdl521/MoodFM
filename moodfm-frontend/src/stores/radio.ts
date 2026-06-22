@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { radioApi } from '@/api/radio'
 import { usePlayerStore } from './player'
+import { mapSongVoToSong } from '@/utils/songVo'
 import type { RadioSession, MoodSessionVO } from '@/types'
 
 export const useRadioStore = defineStore('radio', () => {
@@ -19,22 +20,9 @@ export const useRadioStore = defineStore('radio', () => {
       const player = usePlayerStore()
       if (res.songs && res.songs.length > 0) {
         player.setSessionId(String(res.sessionId))
-        const mapSong = (s: any) => ({
-          id: String(s.id),
-          title: s.title,
-          artist: s.artist,
-          album: s.album,
-          platform: s.platform || undefined,
-          platformSongId: s.platformSongId || '',
-          duration: s.durationSeconds || s.duration || 0,
-          coverUrl: s.coverUrl,
-          audioUrl: s.playUrl || undefined,
-          recommendReason: s.recommendReason,
-          urlSource: s.urlSource,
-        })
         const [first, ...rest] = res.songs
-        player.setSong(mapSong(first))
-        player.setQueue(rest.map(mapSong))
+        player.setSong(mapSongVoToSong(first))
+        player.setQueue(rest.map(mapSongVoToSong))
         player.setPlaying(true)
       }
       session.value = { sessionId: String(res.sessionId), moodText: data.moodText, scene: res.scene, status: 'active', createdAt: new Date().toISOString() }

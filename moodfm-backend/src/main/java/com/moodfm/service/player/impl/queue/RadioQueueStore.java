@@ -54,10 +54,10 @@ public class RadioQueueStore {
                         operations.multi();
                         operations.delete(queueKey);
                         operations.opsForList().rightPushAll(queueKey, serialized);
+                        operations.expire(queueKey, Duration.ofHours(2));
                         return operations.exec();
                     }
                 });
-                redisTemplate.expire(queueKey, Duration.ofHours(2));
             } else {
                 redisTemplate.delete(queueKey);
             }
@@ -148,14 +148,39 @@ public class RadioQueueStore {
 
     /** Infinite-duration marker capped at a 24h TTL. */
     public void markSessionTtlInfinite(Long sessionId) {
+        markSessionTtlInfinite(sessionId, null);
+    }
+
+    /** Infinite-duration marker capped at a 24h TTL, optionally recording session platform. */
+    public void markSessionTtlInfinite(Long sessionId, String platform) {
         String ttlKey = RedisKeys.format(RedisKeys.SESSION_TTL, sessionId);
-        redisTemplate.opsForValue().set(ttlKey, "infinite", Duration.ofHours(24));
+        Duration ttl = Duration.ofHours(24);
+        redisTemplate.opsForValue().set(ttlKey, "infinite", ttl);
+        markSessionPlatform(sessionId, platform, ttl);
     }
 
     /** Fixed-duration TTL of {@code seconds}. */
     public void markSessionTtlSeconds(Long sessionId, int seconds) {
+        markSessionTtlSeconds(sessionId, seconds, null);
+    }
+
+    /** Fixed-duration TTL of {@code seconds}, optionally recording session platform. */
+    public void markSessionTtlSeconds(Long sessionId, int seconds, String platform) {
         String ttlKey = RedisKeys.format(RedisKeys.SESSION_TTL, sessionId);
-        redisTemplate.opsForValue().set(ttlKey, String.valueOf(seconds), Duration.ofSeconds(seconds));
+        Duration ttl = Duration.ofSeconds(seconds);
+        redisTemplate.opsForValue().set(ttlKey, String.valueOf(seconds), ttl);
+        markSessionPlatform(sessionId, platform, ttl);
+    }
+
+    public void markSessionPlatform(Long sessionId, String platform, Duration ttl) {
+        if (sessionId == null || platform == null || platform.isBlank() || ttl == null) return;
+        String key = RedisKeys.format(RedisKeys.SESSION_PLATFORM, sessionId);
+        redisTemplate.opsForValue().set(key, platform, ttl);
+    }
+
+    public String getSessionPlatform(Long sessionId) {
+        if (sessionId == null) return null;
+        return redisTemplate.opsForValue().get(RedisKeys.format(RedisKeys.SESSION_PLATFORM, sessionId));
     }
 
     /** True when the session TTL key is absent (expired or never set). */

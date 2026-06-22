@@ -84,12 +84,7 @@ public class RadioController {
     @PostMapping("/feedback")
     public R<Void> feedback(@Valid @RequestBody PlaybackFeedbackDto dto,
                             @AuthenticationPrincipal UserDetails ud) {
-        Long userId = SecurityUtil.getUserId(ud);
-        feedbackService.record(userId, dto);
-        // Feature 1: 反馈后检查是否需要动态重排
-        if (dto.getSessionId() != null && ("completed".equals(dto.getEventType()) || "skip".equals(dto.getEventType()))) {
-            playerService.reRankIfNeeded(userId, dto.getSessionId());
-        }
+        feedbackService.record(SecurityUtil.getUserId(ud), dto);
         return R.ok();
     }
 
@@ -98,20 +93,10 @@ public class RadioController {
     public R<Void> batchFeedback(@Valid @RequestBody BatchFeedbackRequest request,
                                  @AuthenticationPrincipal UserDetails ud) {
         Long userId = SecurityUtil.getUserId(ud);
-        Long lastSessionId = null;
-        boolean hasPlaybackEvent = false;
         for (PlaybackFeedbackDto dto : request.getEvents()) {
             if (dto.getSessionId() != null && dto.getSongId() != null) {
                 feedbackService.record(userId, dto);
-                lastSessionId = dto.getSessionId();
-                if ("completed".equals(dto.getEventType()) || "skip".equals(dto.getEventType())) {
-                    hasPlaybackEvent = true;
-                }
             }
-        }
-        // Feature 1: 批量反馈后检查是否需要动态重排（仅触发一次）
-        if (hasPlaybackEvent && lastSessionId != null) {
-            playerService.reRankIfNeeded(userId, lastSessionId);
         }
         return R.ok();
     }

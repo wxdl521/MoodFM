@@ -55,8 +55,13 @@ public class RadioQueueMaintenanceService {
         }
     }
 
-    public void refillIfBelowThreshold(Long userId, ExecutorService bgExecutor) {
-        CompletableFuture.runAsync(() -> refillQueue(userId), bgExecutor);
+    public void refillIfBelowThreshold(Long userId, Long sessionId, ExecutorService bgExecutor) {
+        CompletableFuture.runAsync(() -> refillQueue(userId, sessionId), bgExecutor);
+    }
+
+    /** Synchronous refill used by {@code getNextBatch} when the client needs songs immediately. */
+    public void refillQueueSync(Long userId, Long sessionId) {
+        refillQueue(userId, sessionId);
     }
 
     public int refillThreshold() {
@@ -65,7 +70,7 @@ public class RadioQueueMaintenanceService {
 
     private void doReRank(Long userId, Long sessionId) {
         try {
-            PlatformBinding binding = platformBindingService.getDefaultBinding(userId);
+            PlatformBinding binding = resolveBinding(userId, sessionId);
             String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
             String platform = binding.getPlatform();
 
@@ -100,16 +105,20 @@ public class RadioQueueMaintenanceService {
         }
     }
 
-    private void refillQueue(Long userId) {
+    private void refillQueue(Long userId, Long sessionId) {
         try {
             Long currentSize = radioQueueStore.size(userId);
             if (currentSize != null && currentSize >= REFILL_THRESHOLD) return;
 
-            PlatformBinding binding = platformBindingService.getDefaultBinding(userId);
+            PlatformBinding binding = resolveBinding(userId, sessionId);
             String cookie = aesUtil.decrypt(binding.getCookieEncrypted());
             String platform = binding.getPlatform();
 
-            MoodParams mood = loadLatestMood(userId);
+            MoodParams mood = sessionId != null ? loadMoodFromSession(sessionId) : null;
+            if (mood == null) {
+                mood = loadLatestMood(userId);
+            }
+
             List<SongVO> candidates = candidateRecallService.recallSongs(platform, cookie, mood, userId);
 
             Set<String> existingIds = radioQueueStore.peekIds(userId);
@@ -128,6 +137,14 @@ public class RadioQueueMaintenanceService {
         } catch (Exception e) {
             log.warn("Queue refill failed for user {}", userId, e);
         }
+    }
+
+    private PlatformBinding resolveBinding(Long userId, Long sessionId) {
+        String platform = radioQueueStore.getSessionPlatform(sessionId);
+        if (platform != null && !platform.isBlank()) {
+            return platformBindingService.getValidBinding(userId, platform);
+        }
+        return platformBindingService.getDefaultBinding(userId);
     }
 
     private MoodParams loadMoodFromSession(Long sessionId) {

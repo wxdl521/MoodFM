@@ -41,6 +41,8 @@ public final class RedisKeys {
 
     // 会话时长控制
     public static final String SESSION_TTL = "session:ttl:%d";              // sessionId
+    /** 电台会话使用的音乐平台（与 SESSION_TTL 同寿命） */
+    public static final String SESSION_PLATFORM = "session:platform:%d";    // sessionId
 
     /** 用户队列 re-rank 触发计数器 */
     public static final String QUEUE_RERANK = "queue:rerank:%d";  // userId

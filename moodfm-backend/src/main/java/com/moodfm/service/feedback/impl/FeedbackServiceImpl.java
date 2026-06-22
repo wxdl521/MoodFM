@@ -1,6 +1,8 @@
 package com.moodfm.service.feedback.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.moodfm.domain.dto.feedback.PlaybackFeedbackDto;
 import com.moodfm.domain.entity.FeedbackEvent;
 import com.moodfm.domain.entity.PlayRecord;
@@ -28,6 +30,7 @@ public class FeedbackServiceImpl implements FeedbackService {
     private final PlayRecordMapper playRecordMapper;
     private final PlatformSongMappingMapper platformSongMappingMapper;
     private final PlatformBindingService platformBindingService;
+    private final ObjectMapper objectMapper;
 
     @Override
     @Async
@@ -38,6 +41,7 @@ public class FeedbackServiceImpl implements FeedbackService {
         event.setSessionId(dto.getSessionId());
         event.setSongId(dto.getSongId());
         event.setEventType(dto.getEventType());
+        event.setEventData(buildEventData(dto));
         feedbackEventMapper.insert(event);
 
         if ("completed".equals(dto.getEventType()) || "skip".equals(dto.getEventType())) {
@@ -101,6 +105,24 @@ public class FeedbackServiceImpl implements FeedbackService {
         log.warn("resolvePlatform: could not determine platform userId={} songId={} sessionId={} — writing 'unknown'",
                 userId, dto.getSongId(), dto.getSessionId());
         return "unknown";
+    }
+
+    private String buildEventData(PlaybackFeedbackDto dto) {
+        if (!"skip".equals(dto.getEventType()) && !"completed".equals(dto.getEventType())) {
+            return null;
+        }
+        if (dto.getPlayedSeconds() == null && dto.getTotalSeconds() == null) {
+            return null;
+        }
+        try {
+            ObjectNode node = objectMapper.createObjectNode();
+            if (dto.getPlayedSeconds() != null) node.put("playedSeconds", dto.getPlayedSeconds());
+            if (dto.getTotalSeconds() != null) node.put("totalSeconds", dto.getTotalSeconds());
+            return objectMapper.writeValueAsString(node);
+        } catch (Exception e) {
+            log.warn("Failed to serialize feedback eventData for songId={}", dto.getSongId(), e);
+            return null;
+        }
     }
 
     private String mapAction(String eventType, Integer played, Integer total) {

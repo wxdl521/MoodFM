@@ -66,6 +66,22 @@ class NegativeFeedbackFilterTest {
     }
 
     @Test
+    void lateSkip_doesNotRemoveSong() {
+        FeedbackEvent e = skip(100L);
+        e.setEventData("{\"playedSeconds\":120}");
+        when(feedbackEventMapper.selectList(any())).thenReturn(List.of(e, e));
+        when(platformSongMappingMapper.selectList(any())).thenReturn(List.of(mapping(100L, "p100")));
+
+        List<SongVO> candidates = List.of(
+                SongVO.builder().platformSongId("p100").title("SkippedLate").artist("X").build());
+
+        List<SongVO> result = filter.filter(7L, candidates);
+
+        assertEquals(1, result.size());
+        assertEquals("p100", result.get(0).getPlatformSongId());
+    }
+
+    @Test
     void emptyEvents_returnsCandidatesUnchanged() {
         when(feedbackEventMapper.selectList(any())).thenReturn(List.of());
 

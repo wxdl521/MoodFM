@@ -21,5 +21,6 @@ export const radioApi = {
     api.post('/radio/play-from-playlist', { playlistId, durationMinutes }),
   sendFeedback:    (event: FeedbackEvent, payload: FeedbackPayload): Promise<void> => api.post('/radio/feedback', { ...payload, eventType: event }),
   getSessions:     (limit = 5): Promise<MoodSessionVO[]>                  => api.get('/radio/sessions', { params: { limit } }),
+  getNextBatch:    (sessionId: number): Promise<SongVO[]>                 => api.get('/radio/next', { params: { sessionId } }),
   getSongUrl:      (platform: string, songId: string): Promise<string>    => api.get(`/radio/url?platform=${platform}&songId=${songId}`),
 };

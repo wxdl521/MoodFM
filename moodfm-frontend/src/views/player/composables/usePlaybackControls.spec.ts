@@ -6,7 +6,10 @@ import { usePlayerStore } from '@/stores/player'
 import type { Song } from '@/types'
 
 vi.mock('@/api/radio', () => ({
-  radioApi: { sendFeedback: vi.fn(() => Promise.resolve()) },
+  radioApi: {
+    sendFeedback: vi.fn(() => Promise.resolve()),
+    getNextBatch: vi.fn(() => Promise.resolve([])),
+  },
 }))
 vi.mock('@/api/blacklist', () => ({
   blacklistApi: { add: vi.fn(() => Promise.resolve()) },
