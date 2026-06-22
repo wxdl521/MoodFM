@@ -111,7 +111,12 @@ public class SongApiClient {
                     .header("X-Cookie", cookie)
                     .retrieve()
                     .body(String.class);
-            return objectMapper.readTree(json);
+            JsonNode node = objectMapper.readTree(json);
+            if (MusicApiClient.isUnsupported(node)) {
+                log.warn("Adapter unsupported for simi/song on {}: {}",
+                        platform, node.path("reason").asText("unknown"));
+            }
+            return node;
         } catch (Exception e) {
             log.warn("getSimilarSongs failed for {}/{}", platform, songId, e);
             return objectMapper.createObjectNode();

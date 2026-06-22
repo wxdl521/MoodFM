@@ -1,5 +1,6 @@
 package com.moodfm.client.music;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
@@ -41,6 +42,20 @@ public class MusicApiClient {
     /** 平台名转小写，匹配 adapter 路由（NETEASE → netease） */
     private String route(String platform) {
         return platform.toLowerCase();
+    }
+
+    /** Adapter may return { unsupported: true, reason: "..." } for unavailable capabilities. */
+    public static boolean isUnsupported(JsonNode node) {
+        return node != null && node.path("unsupported").asBoolean(false);
+    }
+
+    private JsonNode parseAdapterJson(String json, String operation, String platform) throws JsonProcessingException {
+        JsonNode node = objectMapper.readTree(json);
+        if (isUnsupported(node)) {
+            log.warn("Adapter unsupported for {} on {}: {}",
+                    operation, platform, node.path("reason").asText("unknown"));
+        }
+        return node;
     }
 
     // -------- 二维码登录 --------
@@ -105,7 +120,7 @@ public class MusicApiClient {
                     .header("X-Cookie", cookie)
                     .retrieve()
                     .body(String.class);
-            return objectMapper.readTree(json);
+            return parseAdapterJson(json, "liked-songs", platform);
         } catch (Exception e) {
             log.warn("Failed to get liked songs from {}", platform, e);
             return objectMapper.createObjectNode();
@@ -121,7 +136,7 @@ public class MusicApiClient {
                     .header("X-Cookie", cookie)
                     .retrieve()
                     .body(String.class);
-            return objectMapper.readTree(json);
+            return parseAdapterJson(json, "recommend-songs", platform);
         } catch (Exception e) {
             log.warn("Failed to get recommend songs from {}", platform, e);
             return objectMapper.createObjectNode();
@@ -138,7 +153,7 @@ public class MusicApiClient {
                 req = req.header("X-Cookie", cookie);
             }
             String json = req.retrieve().body(String.class);
-            return objectMapper.readTree(json);
+            return parseAdapterJson(json, "search", platform);
         } catch (Exception e) {
             log.warn("Search failed for keywords: {}", keywords, e);
             return objectMapper.createObjectNode();

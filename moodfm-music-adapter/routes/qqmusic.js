@@ -2,13 +2,24 @@ const express = require('express')
 const router = express.Router()
 const axios = require('axios')
 const crypto = require('crypto')
+const { ok, fail, unsupported } = require('../lib/response')
+const {
+  UA,
+  extractUin,
+  extractCookieValue,
+  getGtk,
+  randomGuid,
+  extractAuth,
+  mapQqSong,
+  fetchLikedSongs,
+  fetchDailyRecommend,
+} = require('../lib/qqHelpers')
 
 // In-memory QR sessions: key -> { qrimg, cookieJar, createdAt }
 const sessions = new Map()
 
 const APP_ID = '716027609'
 const DAID = '416'
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
 function parseCookies(setCookieHeaders) {
   const jar = {}
@@ -36,34 +47,6 @@ function calcPtqrtoken(qrsig) {
     e = e & 2147483647
   }
   return e & 2147483647
-}
-
-// Extract UIN number from QQ cookie string (uin=o12345678 → 12345678)
-function extractUin(cookieStr) {
-  const match = cookieStr.match(/\buin=o?(\d+)/i)
-  return match ? match[1] : '0'
-}
-
-// Extract a single cookie value by name
-function extractCookieValue(cookieStr, name) {
-  const m = cookieStr.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]+)'))
-  return m ? decodeURIComponent(m[1].trim()) : ''
-}
-
-// Compute g_tk from p_skey or skey — required for authenticated QQ Music API calls
-function getGtk(skey) {
-  if (!skey) return 5381
-  let hash = 5381
-  for (let i = 0; i < skey.length; i++) {
-    hash += (hash << 5) + skey.charCodeAt(i)
-    hash = hash & 0x7fffffff
-  }
-  return hash & 0x7fffffff
-}
-
-// Generate a random device GUID (UUID without hyphens)
-function randomGuid() {
-  return crypto.randomUUID().replace(/-/g, '')
 }
 
 // Clean up expired sessions every minute
@@ -352,87 +335,28 @@ router.get('/user/profile', async (req, res) => {
 
 router.get('/user/liked-songs', async (req, res) => {
   const cookie = getCookie(req)
-  if (!cookie) return res.status(401).json({ error: 'cookie required' })
+  if (!cookie) return fail(res, 401, 'cookie required')
   try {
-    const response = await axios.get('https://c.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg', {
-      params: {
-        req: 0,
-        utf8: 1,
-        ct: 24,
-        cv: 0,
-        format: 'json',
-        g_tk: 5381,
-      },
-      headers: {
-        Cookie: cookie,
-        Referer: 'https://y.qq.com',
-        'User-Agent': UA,
-      },
-      timeout: 10000,
-    })
-    const mymusic = response.data?.data?.mymusic || []
-    const songs = mymusic.map(song => ({
-      id: song.songmid || song.mid || String(song.id),
-      name: song.songname || song.title || '',
-      artist: (song.singer || []).map(s => s.name).join('/'),
-      album: song.album?.name || '',
-      duration: song.interval || 0,
-      cover: `https://y.qq.com/music/photo_new/T002R300x300M000${song.album?.mid || ''}.jpg`,
-    }))
-    res.json({ code: 200, songs })
+    const songs = await fetchLikedSongs(cookie)
+    ok(res, { songs })
   } catch (e) {
     console.error('QQ Music liked-songs error:', e.message)
-    res.json({ code: 200, songs: [] })
+    fail(res, 500, e.message)
   }
 })
 
 router.get('/recommend/songs', async (req, res) => {
   const cookie = getCookie(req)
-  if (!cookie) return res.status(401).json({ error: 'cookie required' })
+  if (!cookie) return fail(res, 401, 'cookie required')
   try {
-    const response = await axios.get('https://c.y.qq.com/v8/fcg-bin/fcg_myqq_redir.fcg', {
-      params: {
-        format: 'json',
-        g_tk: 5381,
-      },
-      headers: {
-        Cookie: cookie,
-        Referer: 'https://y.qq.com',
-        'User-Agent': UA,
-      },
-      timeout: 10000,
-    })
-    const list = response.data?.data || []
-    const songs = list.map(song => ({
-      id: song.songmid || song.mid || String(song.id),
-      name: song.songname || song.title || '',
-      artist: (song.singer || []).map(s => s.name).join('/'),
-      album: song.album?.name || '',
-      duration: song.interval || 0,
-      cover: `https://y.qq.com/music/photo_new/T002R300x300M000${song.album?.mid || ''}.jpg`,
-    }))
-    res.json({ code: 200, songs })
-  } catch {
-    // Fallback: search for popular songs as recommendations
-    try {
-      const searchRes = await axios.get('https://c.y.qq.com/soso/fcgi-bin/client_search_cp', {
-        params: { new_json: 1, t: 0, aggr: 1, cr: 1, p: 1, n: 20, w: '热歌推荐' },
-        headers: { Referer: 'https://y.qq.com', 'User-Agent': UA },
-        timeout: 10000,
-      })
-      const songs = (searchRes.data?.data?.song?.list || []).map(song => ({
-        id: song.songmid || song.mid || String(song.id),
-        name: song.songname || song.title || '',
-        artist: (song.singer || []).map(s => s.name).join('/'),
-        album: song.album?.name || '',
-        duration: song.interval || 0,
-        cover: `https://y.qq.com/music/photo_new/T002R300x300M000${song.album?.mid || ''}.jpg`,
-      }))
-      res.json({ code: 200, songs })
-    } catch (e2) {
-      console.error('QQ Music recommend error:', e2.message)
-      res.json({ code: 200, songs: [] })
+    const result = await fetchDailyRecommend(cookie)
+    if (result.unsupported) {
+      return unsupported(res, result.reason, { songs: [] })
     }
+    ok(res, { songs: result.songs })
+  } catch (e) {
+    console.error('QQ Music recommend error:', e.message)
+    fail(res, 500, e.message)
   }
 })
 
@@ -454,11 +378,14 @@ router.get('/search', async (req, res) => {
       const jsonpMatch = text.match(/callback\((.*)\)/s)
       data = jsonpMatch ? JSON.parse(jsonpMatch[1]) : {}
     }
-    const songs = data?.data?.song?.list || []
-    res.json({ code: 200, songs })
+    if (data?.code !== undefined && data.code !== 0) {
+      return fail(res, 502, `QQ Music search API error: code ${data.code}`)
+    }
+    const songs = (data?.data?.song?.list || []).map(mapQqSong).filter(Boolean)
+    ok(res, { songs })
   } catch (e) {
     console.error('QQ Music search error:', e.message)
-    res.json({ code: 200, songs: [] })
+    fail(res, 500, e.message)
   }
 })
 
@@ -468,14 +395,8 @@ router.get('/song/url', async (req, res) => {
   if (!id) return res.status(400).json({ error: 'id is required' })
 
   const cookie = getCookie(req)
-  const uin = cookie ? extractUin(cookie) : '0'
+  const { uin, gtk } = extractAuth(cookie || '')
   const guid = randomGuid()
-
-  // Compute g_tk from qm_keyst/p_skey for VIP authorization
-  const skey = extractCookieValue(cookie, 'qm_keyst')
-    || extractCookieValue(cookie, 'p_skey')
-    || extractCookieValue(cookie, 'qqmusic_key')
-  const gtk = getGtk(skey)
 
   // Support comma-separated IDs for batch requests
   const songmids = id.split(',').map(s => s.trim()).filter(Boolean)
@@ -509,7 +430,7 @@ router.get('/song/url', async (req, res) => {
 
     const vkeyData = response.data?.req_0?.data
     if (!vkeyData) {
-      return res.json({ code: 200, data: [] })
+      return fail(res, 502, 'QQ Music vkey API returned empty data')
     }
 
     const sips = vkeyData.sip || ['https://dl.stream.qqmusic.qq.com/']
@@ -530,24 +451,27 @@ router.get('/song/url', async (req, res) => {
       return { id: songmid, url }
     })
 
-    res.json({ code: 200, data })
+    ok(res, { data })
   } catch (e) {
     console.error('QQ Music song/url error:', e.message)
-    res.json({ code: 200, data: [] })
+    fail(res, 500, e.message)
   }
 })
 
 // Like / unlike song (QQ Music music_like_new.fcg)
 router.get('/song/like', async (req, res) => {
   const { id, like = '1' } = req.query
-  if (!id) return res.status(400).json({ error: 'id is required' })
+  if (!id) return fail(res, 400, 'id is required')
   const cookie = getCookie(req)
+  if (!cookie) return fail(res, 401, 'cookie required')
   try {
+    const auth = extractAuth(cookie)
     const response = await axios.get('https://c.y.qq.com/rsc/fcgi-bin/music_like_new.fcg', {
       params: {
         songmid: id,
         op: parseInt(like) === 1 ? 1 : 0,
         format: 'json',
+        g_tk: auth.gtk,
       },
       headers: {
         Cookie: cookie,
@@ -556,12 +480,13 @@ router.get('/song/like', async (req, res) => {
       },
       timeout: 10000,
     })
-    res.json({ code: 200, data: response.data })
+    if (response.data?.code !== 0) {
+      return fail(res, 502, `QQ Music like API error: code ${response.data?.code}`)
+    }
+    ok(res, { data: response.data })
   } catch (e) {
-    // QQ Music restrictions may block this — return success to prevent frontend errors
-    // The like state is already stored locally by the backend.
-    console.error('QQ Music song/like error (fake success):', e.message)
-    res.json({ code: 200, data: { result: 0, success: true } })
+    console.error('QQ Music song/like error:', e.message)
+    fail(res, 500, e.message)
   }
 })
 
@@ -580,13 +505,15 @@ router.get('/lyric', async (req, res) => {
     res.json({ code: 200, lrc: { lyric } })
   } catch (e) {
     console.error('QQ Music lyric error:', e.message)
-    res.json({ code: 200, lrc: { lyric: '' } })
+    fail(res, 500, e.message)
   }
 })
 
-// Similar songs (stub — no reliable public API)
+// Similar songs — no reliable public QQ Music API
 router.get('/simi/song', async (req, res) => {
-  res.json({ code: 200, songs: [] })
+  const { id } = req.query
+  if (!id) return fail(res, 400, 'id is required')
+  unsupported(res, 'QQ Music similar songs API is not publicly available', { songs: [] })
 })
 
 // User playlists
@@ -607,10 +534,10 @@ router.get('/user/playlists', async (req, res) => {
       cover: p.logo || p.cover || '',
       trackCount: p.song_cnt || p.count || 0,
     }))
-    res.json({ code: 200, playlist })
+    ok(res, { playlist })
   } catch (e) {
     console.error('QQ Music user/playlists error:', e.message)
-    res.json({ code: 200, playlist: [] })
+    fail(res, 500, e.message)
   }
 })
 
@@ -630,18 +557,11 @@ router.get('/playlist/tracks', async (req, res) => {
       timeout: 10000
     })
     const songList = response.data?.cdlist?.[0]?.songlist || []
-    const songs = songList.map(song => ({
-      id: song.songmid || song.mid || String(song.id),
-      name: song.songname || song.title || '',
-      artist: (song.singer || []).map(s => s.name).join('/'),
-      album: song.album?.name || '',
-      duration: song.interval || 0,
-      cover: `https://y.qq.com/music/photo_new/T002R300x300M000${song.album?.mid || ''}.jpg`
-    }))
-    res.json({ code: 200, songs })
+    const songs = songList.map(mapQqSong).filter(Boolean)
+    ok(res, { songs })
   } catch (e) {
     console.error('QQ Music playlist/tracks error:', e.message)
-    res.json({ code: 200, songs: [] })
+    fail(res, 500, e.message)
   }
 })
 
@@ -656,19 +576,12 @@ router.get('/song/detail', async (req, res) => {
       timeout: 10000
     })
     const data = response.data?.data?.[0]
-    if (!data) return res.json({ code: 200, songs: [] })
-    const song = {
-      id: data.songmid || id,
-      name: data.songname || data.title || '',
-      artist: data.singer?.map(s => s.name).join('/') || '',
-      album: data.album?.name || '',
-      duration: data.interval || 0,
-      cover: `https://y.qq.com/music/photo_new/T002R300x300M000${data.album?.mid || ''}.jpg`
-    }
-    res.json({ code: 200, songs: [song] })
+    if (!data) return ok(res, { songs: [] })
+    const song = mapQqSong(data)
+    ok(res, { songs: song ? [song] : [] })
   } catch (e) {
     console.error('QQ Music song/detail error:', e.message)
-    res.json({ code: 200, songs: [] })
+    fail(res, 500, e.message)
   }
 })
 

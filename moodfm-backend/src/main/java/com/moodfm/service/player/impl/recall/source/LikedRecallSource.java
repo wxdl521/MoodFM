@@ -31,8 +31,11 @@ public class LikedRecallSource implements RecallSource {
     @Override
     public List<SongVO> recall(RecallContext ctx) {
         try {
-            return MusicResponseParser.parseSongs(
-                    musicApiClient.getUserLikedSongs(ctx.platform(), ctx.cookie()), ctx.platform());
+            var data = musicApiClient.getUserLikedSongs(ctx.platform(), ctx.cookie());
+            if (MusicApiClient.isUnsupported(data)) {
+                return List.of();
+            }
+            return MusicResponseParser.parseSongs(data, ctx.platform());
         } catch (Exception e) {
             log.warn("fetchLiked failed", e);
             return List.of();
